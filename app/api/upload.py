@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pathlib import Path
 
+from app.services.parser import ParserService
 from app.services.storage import StorageService
 from app.schemas.upload import UploadResponse
 
@@ -32,8 +33,18 @@ async def upload_document(file: UploadFile = File(...)):
 
     location = await StorageService.save_file(file)
 
+# try:
+    text = ParserService.parse(location)
+
+# except Exception:
+#     raise HTTPException(
+#         status_code=400,
+#         detail="Unable to parse document"
+#     )
+
     return UploadResponse(
         filename=location.name,
         size=location.stat().st_size,
+        extracted_characters=len(text),
         message="File uploaded successfully"
     )
