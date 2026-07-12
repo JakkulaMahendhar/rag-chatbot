@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pathlib import Path
 
+from app.services.chunker import ChunkingService
 from app.services.parser import ParserService
 from app.services.storage import StorageService
 from app.schemas.upload import UploadResponse
@@ -36,6 +37,10 @@ async def upload_document(file: UploadFile = File(...)):
 # try:
     text = ParserService.parse(location)
 
+    chunker = ChunkingService()
+
+    chunks = chunker.split(text)
+
 # except Exception:
 #     raise HTTPException(
 #         status_code=400,
@@ -46,5 +51,6 @@ async def upload_document(file: UploadFile = File(...)):
         filename=location.name,
         size=location.stat().st_size,
         extracted_characters=len(text),
-        message="File uploaded successfully"
+        total_chunks=len(chunks),
+        message="File uploaded, parsed and chunked successfully"
     )
