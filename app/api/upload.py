@@ -1,10 +1,9 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
 from pathlib import Path
 
-from app.services.chunker import ChunkingService
-from app.services.parser import ParserService
-from app.services.storage import StorageService
+from fastapi import APIRouter, UploadFile, File, HTTPException
+
 from app.schemas.upload import UploadResponse
+from app.services.document_processor import DocumentProcessingService
 
 router = APIRouter()
 
@@ -32,25 +31,18 @@ async def upload_document(file: UploadFile = File(...)):
             detail="Unsupported file type"
         )
 
-    location = await StorageService.save_file(file)
+    try:
 
-# try:
-    text = ParserService.parse(location)
+        result = await DocumentProcessingService.process(file)
 
-    chunker = ChunkingService()
+    except Exception as e:
 
-    chunks = chunker.split(text)
-
-# except Exception:
-#     raise HTTPException(
-#         status_code=400,
-#         detail="Unable to parse document"
-#     )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to process document: {str(e)}"
+        )
 
     return UploadResponse(
-        filename=location.name,
-        size=location.stat().st_size,
-        extracted_characters=len(text),
-        total_chunks=len(chunks),
+        **result,
         message="File uploaded, parsed and chunked successfully"
     )
