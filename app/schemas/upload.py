@@ -6,4 +6,5 @@ class UploadResponse(BaseModel):
     size: int
     extracted_characters: int
     total_chunks: int
+    total_embeddings: int
     message: str

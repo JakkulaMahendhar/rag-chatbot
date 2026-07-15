@@ -3,19 +3,19 @@ from uuid import UUID
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.models.chunk import DocumentChunk
+from app.core.config import settings
 
 
 class ChunkingService:
 
     def __init__(
-        self,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 200,
+        self
     ):
 
         self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+            length_function=len
         )
 
 
