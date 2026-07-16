@@ -9,10 +9,10 @@ class Settings(BaseSettings):
 
     chunk_overlap: int = 200
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
+    chroma_path: str = "./chroma_db"
+
+    class Config:
+        env_file = ".env"
 
 
 settings = Settings()

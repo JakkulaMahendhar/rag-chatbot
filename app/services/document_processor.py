@@ -9,6 +9,7 @@ from app.services.storage import StorageService
 from app.services.parser import ParserService
 from app.services.chunker import ChunkingService
 from app.services.chunk_storage import ChunkStorageService
+from app.services.vector_store import VectorStoreService
 
 
 class DocumentProcessingService:
@@ -47,6 +48,11 @@ class DocumentProcessingService:
             embeddings=embeddings
         )
 
+        VectorStoreService.add(
+            chunks=chunks,
+            embeddings=embeddings
+        )
+        
         return {
             "document_id": str(document_id),
             "filename": location.name,
