@@ -14,7 +14,21 @@ ALLOWED_TYPES = {
 }
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", 
+             summary="Upload and Process Document",
+             description="""
+Uploads a document and executes the complete AI processing pipeline.
+
+Pipeline:
+
+1. Upload File
+2. Store File
+3. Parse Text
+4. Generate Chunks
+5. Generate Embeddings
+6. Store Vectors in ChromaDB
+""",
+response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
 
     if not file.filename:
@@ -31,18 +45,9 @@ async def upload_document(file: UploadFile = File(...)):
             detail="Unsupported file type"
         )
 
-    try:
-
-        result = await DocumentProcessingService.process(file)
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unable to process document: {str(e)}"
-        )
+    result = await DocumentProcessingService.process(file)
 
     return UploadResponse(
         **result,
-        message="File uploaded, parsed and chunked successfully"
+        message="Document uploaded, processed, embedded, and indexed successfully."
     )

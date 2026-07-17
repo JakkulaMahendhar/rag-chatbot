@@ -3,6 +3,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.upload import router as upload_router
 from app.core.ai_registry import AIServiceRegistry
+from app.api.routes import health
+
+from app.core.exceptions import (
+    DocumentProcessingException,
+    VectorStoreException
+)
+
+from app.core.exception_handlers import (
+    document_exception_handler,
+    vector_exception_handler
+)
+
+from app.core.middleware import (
+    RequestLoggingMiddleware
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +33,22 @@ app = FastAPI(
 
 app.include_router(upload_router)
 
+app.include_router(health.router) # pyright: ignore[reportFunctionMemberAccess]
+
+app.add_exception_handler(
+    DocumentProcessingException,
+    document_exception_handler # pyright: ignore[reportArgumentType]
+)
+
+app.add_exception_handler(
+    VectorStoreException,
+    vector_exception_handler # pyright: ignore[reportArgumentType]
+)
+
+app.add_middleware(
+    RequestLoggingMiddleware
+)
+
 
 @app.get("/")
 def home():
@@ -25,11 +56,11 @@ def home():
         "message": "Welcome to AI Knowledge Assistant"
     }
 
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy"
-    }
+# @app.get("/health")
+# def health():
+#     return {
+#         "status": "healthy"
+#     }
 
 @app.get("/users")
 def users():

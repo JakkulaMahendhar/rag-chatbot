@@ -3,6 +3,9 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 
+from app.core.exceptions import DocumentProcessingException
+from app.core.logger import logger
+
 from app.services.embedding import EmbeddingService
 from app.services.embedding_storage import EmbeddingStorageService
 from app.services.storage import StorageService
@@ -17,9 +20,15 @@ class DocumentProcessingService:
     @staticmethod
     async def process(file: UploadFile):
 
+      try:  
+
         location = await StorageService.save_file(file)
 
+        logger.info("File saved successfully")
+
         text = ParserService.parse(location)
+
+        logger.info("Document parsed successfully")
 
         document_id = uuid4()
 
@@ -34,6 +43,8 @@ class DocumentProcessingService:
             }
         )
 
+        logger.info(f"{len(chunks)} chunks generated")
+
         ChunkStorageService.save(
             document_id=str(document_id),
             chunks=chunks
@@ -42,6 +53,8 @@ class DocumentProcessingService:
         embedding_service = EmbeddingService()
 
         embeddings = embedding_service.generate(chunks)
+
+        logger.info(f"{len(embeddings)} embeddings generated")
 
         EmbeddingStorageService.save(
             document_id=str(document_id),
@@ -52,6 +65,8 @@ class DocumentProcessingService:
             chunks=chunks,
             embeddings=embeddings
         )
+
+        logger.info("Embeddings stored in ChromaDB")
         
         return {
             "document_id": str(document_id),
@@ -61,3 +76,10 @@ class DocumentProcessingService:
             "total_embeddings": len(embeddings),
             "total_chunks": len(chunks)
         }
+      except Exception as e:
+            logger.exception("Document processing failed")
+            raise DocumentProcessingException(
+                "Unable to process document."
+            ) from e
+
+  
