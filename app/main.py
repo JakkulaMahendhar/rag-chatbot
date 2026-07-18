@@ -19,6 +19,8 @@ from app.core.middleware import (
     RequestLoggingMiddleware
 )
 
+from app.api.routes import search
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
@@ -34,6 +36,8 @@ app = FastAPI(
 app.include_router(upload_router)
 
 app.include_router(health.router) # pyright: ignore[reportFunctionMemberAccess]
+
+app.include_router(search.router)
 
 app.add_exception_handler(
     DocumentProcessingException,
