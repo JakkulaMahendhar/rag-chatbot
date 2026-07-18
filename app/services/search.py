@@ -1,14 +1,21 @@
 from app.core.ai_registry import AIServiceRegistry
-from app.services.vector_store import VectorStoreService
+from app.services.retrieval import RetrievalService
 
 
 class SearchService:
 
+
     def __init__(self):
 
         self.embedding_model = (
-            AIServiceRegistry.get_embedding_model()
+            AIServiceRegistry
+            .get_embedding_model()
         )
+
+        self.retrieval_service = (
+            RetrievalService()
+        )
+
 
     def search(
         self,
@@ -16,39 +23,61 @@ class SearchService:
         top_k: int = 3
     ):
 
-        query_embedding = self.embedding_model.encode(
-            query,
-            convert_to_numpy=True
+
+        query_embedding = (
+            self.embedding_model.encode(
+                query,
+                convert_to_numpy=True
+            )
         )
 
-        collection = VectorStoreService.get_collection()
 
-        results = collection.query(
-            query_embeddings=[
-                query_embedding.tolist()
-            ],
-            n_results=top_k
+        results = (
+            self.retrieval_service.retrieve(
+                query_embedding.tolist(),
+                top_k
+            )
         )
+
+
+        return self.format_results(results)
+
+
+
+    def format_results(
+        self,
+        results
+    ):
 
         formatted = []
 
-        for i in range(
+
+        for index in range(
             len(results["ids"][0])
         ):
 
             formatted.append(
 
-            {
-                "chunk_id": results["ids"][0][i],
+                {
 
-                "document": results["documents"][0][i], # type: ignore
+                    "chunk_id":
+                    results["ids"][0][index],
 
-                "metadata": results["metadatas"][0][i], # type: ignore
 
-                "score": results["distances"][0][i] # type: ignore
+                    "document":
+                    results["documents"][0][index],
 
-            }
 
-        )
+                    "metadata":
+                    results["metadatas"][0][index],
+
+
+                    "score":
+                    results["distances"][0][index]
+
+                }
+
+            )
+
 
         return formatted

@@ -1,48 +1,42 @@
-from app.models.chunk import DocumentChunk
-from app.models.embedding import DocumentEmbedding
-from app.services.chroma_client import ChromaClient
+from app.core.logger import logger
 
 
 class VectorStoreService:
 
-    COLLECTION_NAME = "documents"
 
-    @classmethod
-    def get_collection(cls):
+    def __init__(self):
 
-        client = ChromaClient.get_client()
-
-        return client.get_or_create_collection(
-            name=cls.COLLECTION_NAME
+        self.collection = (
+            self.get_collection() # pyright: ignore[reportAttributeAccessIssue]
         )
 
-    @classmethod
-    def add(
-        cls,
-        chunks: list[DocumentChunk],
-        embeddings: list[DocumentEmbedding]
+
+    def search(
+        self,
+        query_embedding: list[float],
+        top_k: int
     ):
 
-        collection = cls.get_collection()
+        try:
 
-        collection.add(
-    ids=[
-        str(chunk.chunk_id)
-        for chunk in chunks
-    ],
-    documents=[
-        chunk.content
-        for chunk in chunks
-    ],
-    embeddings=[
-        embedding.embedding
-        for embedding in embeddings
-    ],
-    metadatas=[
-        {
-            key: str(value) if value is not None else ""
-            for key, value in chunk.metadata.items()
-        }
-        for chunk in chunks
-    ]
-)
+            results = self.collection.query(
+
+                query_embeddings=[
+                    query_embedding
+                ],
+
+                n_results=top_k
+
+            )
+
+
+            return results
+
+
+        except Exception as e:
+
+            logger.exception(
+                "Vector search failed"
+            )
+
+            raise e
