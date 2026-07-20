@@ -1,6 +1,8 @@
 from fastapi import APIRouter
+from pydantic import BaseModel
 
-from app.services.chat import ChatService
+# from app.services.chat import ChatService
+from app.services.rag_chat import RAGChatService
 
 
 router = APIRouter(
@@ -8,26 +10,44 @@ router = APIRouter(
     tags=["Chat"]
 )
 
+class ChatRequest(BaseModel):
 
-
-@router.post("/")
-def chat(
     question: str
+
+
+
+@router.post("")
+def chat(
+    request: ChatRequest
 ):
 
-    service = ChatService()
+    service = RAGChatService()
 
 
-    answer = service.answer(
-        question,
-        []
+    return service.chat(
+        request.question
     )
 
 
-    return {
 
-        "question": question,
+# @router.post("/")
+# def chat(
+#     question: str
+# ):
 
-        "answer": answer
+#     service = ChatService()
 
-    }
+
+#     answer = service.answer(
+#         question,
+#         []
+#     )
+
+
+#     return {
+
+#         "question": question,
+
+#         "answer": answer
+
+#     }

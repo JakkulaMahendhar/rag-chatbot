@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from app.api.upload import router as upload_router
 from app.core.ai_registry import AIServiceRegistry
 from app.api.routes import health
+from app.api import chat
 
 from app.core.exceptions import (
     DocumentProcessingException,
@@ -38,6 +39,10 @@ app.include_router(upload_router)
 app.include_router(health.router) # pyright: ignore[reportFunctionMemberAccess]
 
 app.include_router(search.router)
+
+app.include_router(
+    chat.router
+)
 
 app.add_exception_handler(
     DocumentProcessingException,
