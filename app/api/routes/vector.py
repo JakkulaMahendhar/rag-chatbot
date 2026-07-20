@@ -14,12 +14,6 @@ router = APIRouter(
 )
 def stats():
 
-    collection = VectorStoreService.get_collection()
+    vector_store = VectorStoreService()
 
-    return {
-
-        "collection": collection.name,
-
-        "vectors": collection.count()
-
-    }
+    return vector_store.stats()
