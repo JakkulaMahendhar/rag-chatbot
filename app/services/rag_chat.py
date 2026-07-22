@@ -1,6 +1,9 @@
+import time
+
 from app.services.embedding import EmbeddingService
 from app.services.retrieval import RetrievalService
 from app.services.prompt_builder import PromptBuilder
+from app.services.conversation import ConversationService
 from app.core.ai_registry import AIServiceRegistry
 from app.core.logger import logger
 
@@ -11,25 +14,50 @@ class RAGChatService:
     def __init__(self):
 
         logger.info(
-            "Initializing RAG Chat Service"
+            "Initializing RAGChatService"
         )
 
         self.embedding_service = EmbeddingService()
 
+        logger.info(
+            "EmbeddingService initialized"
+        )
+
+
         self.retrieval_service = RetrievalService()
 
+        logger.info(
+            "RetrievalService initialized"
+        )
+
+
         self.llm = AIServiceRegistry.get_llm()
+
+        logger.info(
+            "LLM provider initialized"
+        )
+
+
+        self.conversation_service = ConversationService()
+
+        logger.info(
+            "ConversationService initialized"
+        )
 
 
 
     def chat(
         self,
-        question: str
+        question: str,
+        conversation_id: str | None = None
     ):
 
 
+        start_time = time.perf_counter()
+
+
         logger.info(
-            "RAG pipeline started"
+            "========== RAG CHAT STARTED =========="
         )
 
 
@@ -38,9 +66,59 @@ class RAGChatService:
         )
 
 
-        # ---------------------------------
-        # Step 1: Query Embedding
-        # ---------------------------------
+        # -----------------------------------------
+        # Conversation Handling
+        # -----------------------------------------
+
+        if conversation_id and conversation_id != "string":
+
+
+            logger.info(
+                f"Existing conversation found: {conversation_id}"
+            )
+
+
+        else:
+
+
+            logger.info(
+                "No conversation_id provided. Creating new conversation"
+            )
+
+
+            conversation_id = (
+                self.conversation_service
+                .create_conversation()
+            )
+
+
+            logger.info(
+                f"Created conversation: {conversation_id}"
+            )
+
+
+
+        self.conversation_service.add_user_message(
+
+            conversation_id,
+
+            question
+
+        )
+
+
+        logger.info(
+            "User message stored in conversation memory"
+        )
+
+
+
+        # -----------------------------------------
+        # Query Embedding
+        # -----------------------------------------
+
+        embedding_start = time.perf_counter()
+
 
         logger.info(
             "Generating query embedding"
@@ -55,54 +133,109 @@ class RAGChatService:
         )
 
 
+        embedding_time = (
+            time.perf_counter()
+            -
+            embedding_start
+        )
+
+
         logger.info(
-            f"Query embedding generated. Dimension: {len(query_embedding)}"
+            f"Query embedding generated | "
+            f"Dimension: {len(query_embedding)} | "
+            f"Time: {embedding_time:.3f}s"
         )
 
 
 
-        # ---------------------------------
-        # Step 2: Vector Retrieval
-        # ---------------------------------
+        # -----------------------------------------
+        # Vector Retrieval
+        # -----------------------------------------
+
+        retrieval_start = time.perf_counter()
+
 
         logger.info(
-            "Searching similar chunks in vector database"
+            "Searching relevant chunks from vector database"
         )
 
 
         results = (
             self.retrieval_service.retrieve(
+
                 query_embedding=query_embedding,
+
                 top_k=3
+
             )
         )
 
 
-        documents = results.get(
-            "documents",
-            [[]]
-        )[0] # type: ignore
+        retrieval_time = (
+            time.perf_counter()
+            -
+            retrieval_start
+        )
+
+
+        documents = (
+            results
+            .get(
+                "documents",
+                [[]]
+            )[0] # type: ignore
+        )
 
 
         logger.info(
-            f"Retrieved chunks count: {len(documents)}"
+            f"Vector search completed | "
+            f"Retrieved chunks: {len(documents)} | "
+            f"Time: {retrieval_time:.3f}s"
         )
+
 
 
         for index, document in enumerate(documents):
 
             logger.debug(
-                f"Chunk {index + 1}: {document[:100]}"
+
+                f"Retrieved chunk {index + 1}: "
+                f"{document[:150]}"
+
             )
 
 
 
-        # ---------------------------------
-        # Step 3: Prompt Construction
-        # ---------------------------------
+        # -----------------------------------------
+        # Conversation History
+        # -----------------------------------------
 
         logger.info(
-            "Building RAG prompt"
+            "Loading conversation history"
+        )
+
+
+        history = (
+            self.conversation_service
+            .get_history(
+                conversation_id
+            )
+        )
+
+
+        logger.info(
+            f"Conversation history loaded | "
+            f"Messages count: {len(history)}"
+        )
+
+
+
+        # -----------------------------------------
+        # Prompt Creation
+        # -----------------------------------------
+
+        logger.info(
+            "Building final RAG prompt"
         )
 
 
@@ -110,20 +243,26 @@ class RAGChatService:
 
             question,
 
-            documents
+            documents,
+
+            history
 
         )
 
 
         logger.info(
-            f"Prompt created. Length: {len(prompt)} characters"
+            f"Prompt created | "
+            f"Characters: {len(prompt)}"
         )
 
 
 
-        # ---------------------------------
-        # Step 4: LLM Generation
-        # ---------------------------------
+        # -----------------------------------------
+        # LLM Generation
+        # -----------------------------------------
+
+        llm_start = time.perf_counter()
+
 
         logger.info(
             "Sending prompt to LLM"
@@ -135,23 +274,57 @@ class RAGChatService:
         )
 
 
-        logger.info(
-            "LLM response generated successfully"
+        llm_time = (
+            time.perf_counter()
+            -
+            llm_start
         )
 
 
         logger.info(
-            f"Response length: {len(answer)} characters"
+            f"LLM response generated | "
+            f"Response length: {len(answer)} | "
+            f"Time: {llm_time:.3f}s"
         )
 
+
+
+        # -----------------------------------------
+        # Store Assistant Response
+        # -----------------------------------------
+
+        self.conversation_service.add_assistant_message(
+
+            conversation_id,
+
+            answer
+
+        )
 
 
         logger.info(
-            "RAG pipeline completed"
+            "Assistant response stored in conversation memory"
         )
+
+
+
+        total_time = (
+            time.perf_counter()
+            -
+            start_time
+        )
+
+
+        logger.info(
+            f"========== RAG CHAT COMPLETED | "
+            f"Total time: {total_time:.3f}s =========="
+        )
+
 
 
         return {
+
+            "conversation_id": conversation_id,
 
             "question": question,
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # from app.services.chat import ChatService
 from app.services.rag_chat import RAGChatService
@@ -12,8 +12,15 @@ router = APIRouter(
 
 class ChatRequest(BaseModel):
 
-    question: str
-
+    question: str = Field(
+        ...,
+        example="Explain RAG"
+    ) # type: ignore
+    
+    conversation_id: str | None = Field(
+        default=None,
+        example=None
+    ) # type: ignore
 
 
 @router.post("")
@@ -25,7 +32,8 @@ def chat(
 
 
     return service.chat(
-        request.question
+        question=request.question,
+        conversation_id=request.conversation_id
     )
 
 

@@ -3,9 +3,14 @@ class PromptBuilder:
 
     @staticmethod
     def build(
+
         question: str,
-        contexts: list[str]
-    ) -> str:
+
+        contexts: list[str],
+
+        history=None
+
+    ):
 
 
         context_text = "\n\n".join(
@@ -13,18 +18,35 @@ class PromptBuilder:
         )
 
 
+        history_text = ""
+
+
+        if history:
+
+            history_text = "\n".join(
+
+                [
+                    f"{msg.role}: {msg.content}"
+                    for msg in history
+                ]
+
+            )
+
+
         prompt = f"""
 You are an AI assistant.
 
-Answer the question using only the provided context.
+Use the conversation history and provided context.
 
-If the answer is not available in the context,
-say you don't know.
+Conversation History:
+--------------------
+{history_text}
+--------------------
 
 Context:
-----------------
+--------------------
 {context_text}
-----------------
+--------------------
 
 Question:
 {question}
