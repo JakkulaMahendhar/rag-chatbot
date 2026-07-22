@@ -6,6 +6,7 @@ from app.services.prompt_builder import PromptBuilder
 from app.services.conversation import ConversationService
 from app.core.ai_registry import AIServiceRegistry
 from app.core.logger import logger
+from app.services.source_builder import SourceBuilder
 
 
 class RAGChatService:
@@ -178,13 +179,12 @@ class RAGChatService:
         )
 
 
-        documents = (
-            results
-            .get(
-                "documents",
-                [[]]
-            )[0] # type: ignore
-        )
+        sources = SourceBuilder.build(results)
+
+        documents = [
+            source.content
+            for source in sources
+        ]
 
 
         logger.info(
@@ -330,6 +330,6 @@ class RAGChatService:
 
             "answer": answer,
 
-            "sources": documents
+            "sources": sources
 
         }

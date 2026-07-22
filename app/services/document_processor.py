@@ -37,6 +37,7 @@ class DocumentProcessingService:
                 text=text,
                 document_id=document_id,
                 metadata={
+                    "document_id": str(document_id),
                     "filename": location.name,
                     "type": location.suffix
                 }

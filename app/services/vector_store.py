@@ -50,13 +50,84 @@ class VectorStoreService:
     ):
 
         logger.info(
-            f"Searching top {top_k} similar chunks"
+            f"Vector search started | top_k={top_k}"
         )
 
-        return self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k
-        )
+        try:
+
+            results = self.collection.query(
+
+                query_embeddings=[
+                    query_embedding
+                ],
+
+                n_results=top_k
+
+            )
+
+
+            documents = results.get(
+                "documents",
+                [[]]
+            )[0] # type: ignore
+
+
+            metadatas = results.get(
+                "metadatas",
+                [[]]
+            )[0] # type: ignore
+
+
+            distances = results.get(
+                "distances",
+                [[]]
+            )[0] # type: ignore
+
+
+            logger.info(
+                f"Vector search completed | "
+                f"chunks={len(documents)}"
+            )
+
+
+            for index, document in enumerate(documents):
+
+                metadata = (
+                    metadatas[index]
+                    if index < len(metadatas)
+                    else {}
+                )
+
+
+                distance = (
+                    distances[index]
+                    if index < len(distances)
+                    else None
+                )
+
+
+                logger.debug(
+                    f"""
+                Retrieved chunk:
+                index={index}
+                filename={metadata.get('filename')}
+                distance={distance}
+                content={document[:100]}
+                """
+                )
+
+
+            return results
+
+
+        except Exception as e:
+
+
+            logger.exception(
+            "Vector search failed"
+            )
+
+            raise e
 
     def stats(self):
 

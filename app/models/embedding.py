@@ -1,12 +1,12 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DocumentEmbedding(BaseModel):
 
-    chunk_id: int
+    chunk_id: str
 
     document_id: UUID
 
@@ -14,4 +14,4 @@ class DocumentEmbedding(BaseModel):
 
     metadata: dict
 
-    created_at: datetime = datetime.utcnow()
+    created_at: datetime = Field(default_factory=datetime.utcnow)

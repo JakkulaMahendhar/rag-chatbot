@@ -28,12 +28,29 @@ class ChunkingService:
 
         chunks = self.splitter.split_text(text)
 
-        return [
-            DocumentChunk(
-                chunk_id=index,
-                document_id=document_id,
-                content=chunk,
-                metadata=metadata
+        document_chunks = []
+
+        for index, chunk in enumerate(chunks):
+
+            chunk_id = f"{document_id}-{index}"
+
+            document_chunks.append(
+
+                DocumentChunk(
+
+                    chunk_id=chunk_id,
+
+                    document_id=document_id,
+
+                    content=chunk,
+
+                    metadata={
+                        **metadata,
+                        "chunk_id": chunk_id
+                    }
+
+                )
+
             )
-            for index, chunk in enumerate(chunks)
-        ]
+
+        return document_chunks
