@@ -7,6 +7,7 @@ from app.services.conversation import ConversationService
 from app.core.ai_registry import AIServiceRegistry
 from app.core.logger import logger
 from app.services.source_builder import SourceBuilder
+from app.services.context_formatter import ContextFormatter
 
 
 class RAGChatService:
@@ -181,28 +182,34 @@ class RAGChatService:
 
         sources = SourceBuilder.build(results)
 
-        documents = [
-            source.content
-            for source in sources
-        ]
+        context = ContextFormatter.format(sources)
 
 
         logger.info(
             f"Vector search completed | "
-            f"Retrieved chunks: {len(documents)} | "
+            f"Retrieved chunks: {len(sources)} | "
+            f"Context size: {len(context)} characters | "
             f"Time: {retrieval_time:.3f}s"
         )
 
 
 
-        for index, document in enumerate(documents):
+        for index, source in enumerate(sources):
 
             logger.debug(
 
-                f"Retrieved chunk {index + 1}: "
-                f"{document[:150]}"
+            f"""
+            Retrieved Source {index + 1}
 
-            )
+            Filename:{source.filename}
+
+            Chunk ID:{source.chunk_id}
+
+            Score:{source.score}
+
+            Content Preview:{source.content[:150]}
+            """
+            )   
 
 
 
@@ -243,7 +250,7 @@ class RAGChatService:
 
             question,
 
-            documents,
+            context,
 
             history
 
@@ -272,6 +279,16 @@ class RAGChatService:
         answer = self.llm.generate(
             prompt
         )
+
+        logger.info(
+    f"""
+================ FINAL PROMPT ================
+
+{prompt}
+
+==============================================
+"""
+)
 
 
         llm_time = (

@@ -7,9 +7,8 @@ def test_prompt_has_hallucination_rules():
 
         question="Explain Kubernetes",
 
-        contexts=[
+        contexts=
             "Android services run background operations"
-        ]
 
     )
 

@@ -7,9 +7,8 @@ def test_rag_prompt_generation():
 
         question="What is a background service?",
 
-        contexts=[
+        contexts=
             "A service is a component that runs in the background to perform long running operations."
-        ]
 
     )
 

@@ -68,7 +68,7 @@ class SourceBuilder:
 
                 content=document,
 
-                score=distance
+                score=distance # type: ignore
 
             )
 
