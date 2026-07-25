@@ -8,7 +8,14 @@ from app.core.ai_registry import AIServiceRegistry
 from app.core.logger import logger
 from app.services.source_builder import SourceBuilder
 from app.services.context_formatter import ContextFormatter
-
+from app.models.rag_metrics import RAGMetrics
+from app.services.metrics import MetricsService
+from app.services.rag_evaluator import RAGEvaluator
+from app.services.context_ranker import ContextRanker
+from app.services.context_deduplicator import ContextDeduplicator
+from app.services.context_compressor import ContextCompressor
+from app.services.query_enhancer import QueryEnhancer
+from app.services.search_evaluator import SearchEvaluator
 
 class RAGChatService:
 
@@ -46,6 +53,11 @@ class RAGChatService:
             "ConversationService initialized"
         )
 
+        self.query_enhancer = QueryEnhancer()
+
+        logger.info(
+            "QueryEnhancer initialized"
+        )
 
 
     def chat(
@@ -127,13 +139,16 @@ class RAGChatService:
         )
 
 
-        query_embedding = (
-            self.embedding_service
-            .generate_query_embedding(
-                question
-            )
+        enhanced_query = (
+            self.query_enhancer.enhance(question)
         )
 
+
+        query_embedding = (
+            self.embedding_service.generate_query_embedding(
+            enhanced_query
+            )
+        )
 
         embedding_time = (
             time.perf_counter()
@@ -166,19 +181,56 @@ class RAGChatService:
             self.retrieval_service.retrieve(
 
                 query_embedding=query_embedding,
-
+                query=question
             )
+        )
+
+        evaluation = SearchEvaluator.evaluate(
+
+            question,
+
+            results
+
         )
 
         if not results["ids"][0]:
 
-            logger.warning(
-                "No relevant documents found after filtering."
+            retrieval_time = (
+                time.perf_counter()
+                -
+                retrieval_start
             )
 
-            logger.info(
-                 "Skipping LLM generation because no relevant context was found."
+            total_time = (
+                        time.perf_counter()
+                        -
+                        start_time
+                    )
+
+            metrics = RAGMetrics(
+
+                conversation_id=conversation_id,
+
+                question=question,
+
+                 retrieved_chunks=0,
+
+                accepted_chunks=0,
+
+                context_length=0,
+
+                embedding_time=embedding_time,
+
+                retrieval_time=retrieval_time,
+
+                llm_time=0,
+
+                total_time=total_time
+
             )
+
+
+            MetricsService.record(metrics)    
 
             return {
                 "conversation_id": conversation_id,
@@ -196,6 +248,21 @@ class RAGChatService:
 
 
         sources = SourceBuilder.build(results)
+        
+        # -----------------------------------------
+        # Retrieval Evaluation
+        # -----------------------------------------
+
+        evaluation = RAGEvaluator.evaluate(question,sources)
+
+        sources = ContextRanker.rank(sources)
+
+        sources = ContextDeduplicator.remove_duplicates(sources)
+
+        logger.info(
+            f"Unique sources after deduplication: {len(sources)}")
+
+        sources = ContextCompressor.compress(question,sources)
 
         context = ContextFormatter.format(sources)
 
@@ -364,6 +431,35 @@ class RAGChatService:
             f"Total time: {total_time:.3f}s =========="
         )
 
+        # -----------------------------------------
+        # RAG Metrics
+        # -----------------------------------------
+
+        metrics = RAGMetrics(
+
+            conversation_id=conversation_id,
+
+            question=question,
+
+            retrieved_chunks=len(results["ids"][0]),
+
+            accepted_chunks=len(sources),
+
+            context_length=len(context),
+
+            embedding_time=embedding_time,
+
+            retrieval_time=retrieval_time,
+
+            llm_time=llm_time,
+
+            total_time=total_time
+
+        )
+
+
+        MetricsService.record(metrics)
+
 
 
         return {
@@ -374,6 +470,8 @@ class RAGChatService:
 
             "answer": answer,
 
-            "sources": sources
+            "sources": sources,
+
+            "evaluation": evaluation
 
         }

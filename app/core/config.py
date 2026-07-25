@@ -43,9 +43,17 @@ class Settings(BaseSettings):
 
     retrieval_top_k: int = 3
 
-    distance_threshold: float = 0.8
+    distance_threshold: float = 1.0
 
     similarity_threshold: float = 0.75
+
+    hybrid_similarity_threshold: float = 0.35
+
+    bm25_path:str="./storage/bm25"
+
+    vector_weight: float = 0.7
+
+    bm25_weight: float = 0.5
 
     model_config = SettingsConfigDict(
         env_file=".env",

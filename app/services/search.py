@@ -35,7 +35,7 @@ class SearchService:
         results = (
             self.retrieval_service.retrieve(
                 query_embedding.tolist(),
-                top_k
+                query=query
             )
         )
 

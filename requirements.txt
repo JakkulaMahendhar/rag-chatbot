@@ -124,6 +124,7 @@ python-jose==3.5.0
 python-multipart==0.0.32
 pytokens==0.4.1
 PyYAML==6.0.3
+rank-bm25==0.2.2
 referencing==0.37.0
 regex==2026.7.10
 requests==2.34.2

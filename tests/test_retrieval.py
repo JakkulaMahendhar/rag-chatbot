@@ -21,7 +21,7 @@ def test_retrieval():
 
     result = service.retrieve(
         [0.1,0.2],
-        1
+        "1"
     )
 
 

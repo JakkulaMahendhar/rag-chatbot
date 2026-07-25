@@ -12,6 +12,9 @@ from app.services.chunk_storage import ChunkStorageService
 from app.services.embedding import EmbeddingService
 from app.services.embedding_storage import EmbeddingStorageService
 from app.services.vector_store import VectorStoreService
+from app.services.bm25_search import BM25SearchService
+
+from app.models.bm25_document import BM25Document
 
 
 class DocumentProcessingService:
@@ -22,7 +25,16 @@ class DocumentProcessingService:
 
         try:
 
+            # -----------------------------------
+            # Save File
+            # -----------------------------------
+
             location = await StorageService.save_file(file)
+
+
+            # -----------------------------------
+            # Parse Document
+            # -----------------------------------
 
             text = ParserService.parse(location)
 
@@ -30,47 +42,89 @@ class DocumentProcessingService:
             document_id = uuid4()
 
 
+            # -----------------------------------
+            # Chunk Generation
+            # -----------------------------------
+
             chunker = ChunkingService()
 
 
             chunks = chunker.split(
+
                 text=text,
+
                 document_id=document_id,
+
                 metadata={
+
                     "document_id": str(document_id),
+
                     "filename": location.name,
+
                     "type": location.suffix
+
                 }
+
             )
 
+
+            logger.info(
+                f"Generated chunks: {len(chunks)}"
+            )
+
+
+
+            # -----------------------------------
+            # Save Chunks
+            # -----------------------------------
 
             ChunkStorageService.save(
+
                 document_id=str(document_id),
+
                 chunks=chunks
+
             )
 
+
+
+            # -----------------------------------
+            # Generate Embeddings
+            # -----------------------------------
 
             embedding_service = EmbeddingService()
 
 
             embeddings = embedding_service.generate(
+
                 chunks
+
             )
 
 
             EmbeddingStorageService.save(
+
                 document_id=str(document_id),
+
                 embeddings=embeddings
+
             )
 
 
-            # Sprint 7.1 change
+
+            # -----------------------------------
+            # Store Vector Embeddings
+            # -----------------------------------
+
             vector_store = VectorStoreService()
 
 
             vector_store.add_chunks(
+
                 chunks=chunks,
+
                 embeddings=embeddings
+
             )
 
 
@@ -79,17 +133,68 @@ class DocumentProcessingService:
             )
 
 
+
+            # -----------------------------------
+            # Sprint 9.5.2
+            # Store BM25 Index
+            # -----------------------------------
+
+            bm25_service = BM25SearchService()
+
+
+            bm25_documents = []
+
+
+            for chunk in chunks:
+
+
+                bm25_documents.append(
+
+                    BM25Document(
+
+                        chunk_id=str(chunk.chunk_id),
+
+                        document_id=chunk.document_id,
+
+                        content=chunk.content,
+
+                        metadata=chunk.metadata
+
+                    )
+
+                )
+
+
+            bm25_service.add_documents(
+
+                bm25_documents
+
+            )
+
+
+            logger.info(
+                "Document stored successfully in BM25 index"
+            )
+
+
+
             return {
+
 
                 "document_id": str(document_id),
 
+
                 "filename": location.name,
+
 
                 "size": location.stat().st_size,
 
+
                 "extracted_characters": len(text),
 
+
                 "total_chunks": len(chunks),
+
 
                 "total_embeddings": len(embeddings)
 
@@ -98,10 +203,16 @@ class DocumentProcessingService:
 
         except Exception as e:
 
+
             logger.exception(
+
                 "Document processing failed"
+
             )
 
+
             raise DocumentProcessingException(
+
                 "Unable to process document."
+
             ) from e
