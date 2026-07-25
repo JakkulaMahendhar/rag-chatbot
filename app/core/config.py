@@ -41,6 +41,12 @@ class Settings(BaseSettings):
 
     ollama_model: str = "llama3.1"
 
+    retrieval_top_k: int = 3
+
+    distance_threshold: float = 0.8
+
+    similarity_threshold: float = 0.75
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore"

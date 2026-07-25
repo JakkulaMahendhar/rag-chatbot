@@ -167,10 +167,25 @@ class RAGChatService:
 
                 query_embedding=query_embedding,
 
-                top_k=3
-
             )
         )
+
+        if not results["ids"][0]:
+
+            logger.warning(
+                "No relevant documents found after filtering."
+            )
+
+            logger.info(
+                 "Skipping LLM generation because no relevant context was found."
+            )
+
+            return {
+                "conversation_id": conversation_id,
+                "question": question,
+                "answer": "I don't have enough information from the provided documents.",
+                "sources": []
+            }
 
 
         retrieval_time = (
@@ -206,6 +221,8 @@ class RAGChatService:
             Chunk ID:{source.chunk_id}
 
             Score:{source.score}
+
+            Distance : {source.score:.4f}
 
             Content Preview:{source.content[:150]}
             """
@@ -280,7 +297,17 @@ class RAGChatService:
             prompt
         )
 
-        logger.info(
+        logger.debug(
+    f"""
+================ LLM RESPONSE ================
+
+{answer}
+
+==============================================
+"""
+)
+
+        logger.debug(
     f"""
 ================ FINAL PROMPT ================
 
