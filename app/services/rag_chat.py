@@ -138,9 +138,12 @@ class RAGChatService:
             "Generating query embedding"
         )
 
+        history = (
+            self.conversation_service.get_history(conversation_id)
+        )
 
         enhanced_query = (
-            self.query_enhancer.enhance(question)
+            self.query_enhancer.enhance(question, history)
         )
 
 
@@ -181,11 +184,11 @@ class RAGChatService:
             self.retrieval_service.retrieve(
 
                 query_embedding=query_embedding,
-                query=question
+                query=enhanced_query
             )
         )
 
-        evaluation = SearchEvaluator.evaluate(
+        search_evaluation = SearchEvaluator.evaluate(
 
             question,
 
@@ -471,6 +474,8 @@ class RAGChatService:
             "answer": answer,
 
             "sources": sources,
+
+            "search_evaluation": search_evaluation,
 
             "evaluation": evaluation
 

@@ -13,35 +13,53 @@ class QueryEnhancer:
         )
 
 
+
     def enhance(
         self,
-        question: str
+        question: str,
+        history: list | None = None
     ) -> str:
 
 
         logger.info(
-            "Enhancing user query"
+            "Enhancing query with conversation context"
+        )
+
+
+        conversation = self._format_history(
+            history
         )
 
 
         prompt = f"""
 
-You are a search query optimizer for a RAG system.
+You are a query rewriting engine for a RAG system.
 
-Rewrite the user question into a more detailed
-search query.
+Your task:
+Rewrite the latest user question into a standalone search query.
+
+Use previous conversation context if required.
 
 Rules:
-- Keep the original intent.
+- Resolve pronouns like:
+  it, this, that, they, its
 - Add missing technical context.
+- Preserve user intent.
 - Do not answer the question.
-- Return only the improved search query.
+- Return only the search query.
 
-User Question:
+
+Conversation History:
+
+{conversation}
+
+
+Current Question:
 
 {question}
 
-Improved Search Query:
+
+Standalone Search Query:
 
 """
 
@@ -50,24 +68,69 @@ Improved Search Query:
             self.llm.generate(
                 prompt
             )
-        )
-
-
-        enhanced_query = (
-            enhanced_query
             .strip()
         )
 
 
         logger.info(
-            f"""
-Original Query:
+f"""
+Conversation Aware Query Rewrite
+
+Original:
 {question}
 
-Enhanced Query:
+
+Rewritten:
 {enhanced_query}
 """
         )
 
 
         return enhanced_query
+
+
+
+    def _format_history(
+        self,
+        history: list | None
+    ) -> str:
+
+
+        if not history:
+
+            return "No previous conversation."
+
+
+        conversation = ""
+
+
+        for message in history:
+
+
+            # Pydantic object
+            if hasattr(message, "role"):
+
+
+                conversation += f"""
+
+{message.role}:
+
+{message.content}
+
+"""
+
+
+            # Dictionary fallback
+            elif isinstance(message, dict):
+
+
+                conversation += f"""
+
+{message.get('role')}
+
+{message.get('content')}
+
+"""
+
+
+        return conversation
