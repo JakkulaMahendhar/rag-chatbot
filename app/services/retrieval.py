@@ -111,7 +111,7 @@ Documents:
 
         for index, score in enumerate(results["hybrid_scores"][0]):
 
-            if score >= settings.hybrid_similarity_threshold:
+            if score >= settings.hybrid_score_threshold:
 
                 filtered["ids"][0].append(results["ids"][0][index])
 
@@ -136,7 +136,7 @@ Rejected:
 {total - len(filtered['ids'][0])}
 
 Threshold:
-{settings.hybrid_similarity_threshold}
+{settings.hybrid_score_threshold}
 
 """)
 

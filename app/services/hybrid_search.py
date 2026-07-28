@@ -40,7 +40,7 @@ class HybridSearchService:
         # BM25 Search
         # ==================================================
 
-        bm25_results = self.bm25_service.search(query=query, top_k=settings.top_k_BM25)
+        bm25_results = self.bm25_service.search(query=query, top_k=settings.top_k_bm25)
 
         self._normalize_bm25_scores(bm25_results)
 
@@ -56,7 +56,7 @@ class HybridSearchService:
             [
                 item
                 for item in merged.values()
-                if item["hybrid_score"] >= settings.hybrid_similarity_threshold
+                if item["hybrid_score"] >= settings.hybrid_score_threshold
             ],
             key=lambda x: x["hybrid_score"],
             reverse=True,
@@ -96,7 +96,7 @@ Filename:
         filtered_results = [
             item
             for item in ranked
-            if item["hybrid_score"] >= settings.hybrid_similarity_threshold
+            if item["hybrid_score"] >= settings.hybrid_score_threshold
         ]
 
         logger.info(f"""
@@ -112,7 +112,7 @@ Rejected:
 {len(ranked)-len(filtered_results)}
 
 Threshold:
-{settings.hybrid_similarity_threshold}
+{settings.hybrid_score_threshold}
 """)
 
         final_results = filtered_results[:top_k]

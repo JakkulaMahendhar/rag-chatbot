@@ -1,5 +1,6 @@
 import time
 
+from app.services.context_window_manager import ContextWindowManager
 from app.services.embedding import EmbeddingService
 from app.services.retrieval import RetrievalService
 from app.services.prompt_builder import PromptBuilder
@@ -55,6 +56,10 @@ class RAGChatService:
         self.reranker = Reranker()
 
         logger.info("Reranker initialized")
+
+        self.context_manager = ContextWindowManager(
+            max_context_tokens=4000, reserved_response_tokens=1000
+        )
 
     def chat(self, question: str, conversation_id: str | None = None):
 
@@ -155,6 +160,12 @@ After Cross Encoder:
         logger.info(f"After deduplication: {len(sources)}")
 
         sources = ContextCompressor.compress(question, sources)
+
+        logger.info(f"After compression: {len(sources)}")
+
+        sources = self.context_manager.select_context(sources)
+
+        logger.info(f"After context window selection: {len(sources)}")
 
         context = ContextFormatter.format(sources)
 
