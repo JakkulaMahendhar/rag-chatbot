@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # LLM Configuration
 
     llm_provider: str = "ollama"
-    
+
     # llm_provider: str = "gemini"
 
     gemini_api_key: str | None = None
@@ -47,18 +47,27 @@ class Settings(BaseSettings):
 
     similarity_threshold: float = 0.75
 
-    hybrid_similarity_threshold: float = 0.35
+    hybrid_similarity_threshold: float = 0.25
 
-    bm25_path:str="./storage/bm25"
+    bm25_path: str = "./storage/bm25"
 
-    vector_weight: float = 0.7
+    vector_weight: float = 0.6
 
-    bm25_weight: float = 0.5
+    bm25_weight: float = 0.4
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
+    # Vector Retrieval
+    top_k_vector: int = 10
+
+    # BM25 Retrieval
+    top_k_BM25: int = 10
+
+    # Hybrid Search
+    hybrid_top_k: int = 10
+
+    # Reranking
+    rerank_top_k: int = 3
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

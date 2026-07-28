@@ -12,3 +12,5 @@ class SourceReference(BaseModel):
     content: str
 
     score: float | None = None
+
+    rerank_score: float | None = None

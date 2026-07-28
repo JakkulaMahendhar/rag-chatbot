@@ -1,111 +1,40 @@
-from app.models.search_evaluation import SearchEvaluation
-from app.core.logger import logger
+from app.models.source import SourceReference
 
 
 class SearchEvaluator:
 
-
     @staticmethod
-    def evaluate(
-        question:str,
-        results:dict
-    ):
+    def evaluate(question: str, sources: list[SourceReference]):
 
-
-        scores = results["distances"][0]
-
+        scores = [source.score for source in sources if source.score is not None]
 
         if not scores:
 
-            return SearchEvaluation(
+            return {
+                "question": question,
+                "retrieved": len(sources),
+                "average_score": 0,
+                "best_score": 0,
+                "quality": "Weak",
+            }
 
-                question=question,
+        average_score = sum(scores) / len(scores)
 
-                vector_results=0,
+        best_score = max(scores)
 
-                bm25_results=0,
+        if best_score >= 0.7:
+            quality = "Excellent"
 
-                hybrid_results=0,
-
-                best_score=0,
-
-                average_score=0,
-
-                quality="No Results"
-
-            )
-
-
-        best_score=max(scores)
-
-        average_score=sum(scores)/len(scores)
-
-
-
-        if best_score >= 0.8:
-
-            quality="Excellent"
-
-
-        elif best_score >=0.6:
-
-            quality="Good"
-
-
-        elif best_score >=0.4:
-
-            quality="Average"
-
+        elif best_score >= 0.5:
+            quality = "Good"
 
         else:
+            quality = "Weak"
 
-            quality="Weak"
-
-
-
-        evaluation = SearchEvaluation(
-
-            question=question,
-
-            vector_results=len(scores),
-
-            bm25_results=len(scores),
-
-            hybrid_results=len(scores),
-
-            best_score=best_score,
-
-            average_score=average_score,
-
-            quality=quality
-
-        )
-
-
-        logger.info(
-
-f"""
-========== SEARCH EVALUATION ==========
-
-Question:
-{question}
-
-Retrieved:
-{len(scores)}
-
-Best Score:
-{best_score}
-
-Average Score:
-{average_score}
-
-Quality:
-{quality}
-
-=======================================
-"""
-
-        )
-
-
-        return evaluation
+        return {
+            "question": question,
+            "retrieved": len(sources),
+            "average_score": round(average_score, 4),
+            "best_score": round(best_score, 4),
+            "quality": quality,
+        }
