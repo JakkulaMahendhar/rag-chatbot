@@ -2,6 +2,7 @@ import time
 
 from app.services.context_window_manager import ContextWindowManager
 from app.services.embedding import EmbeddingService
+from app.services.hallucination_guard_service import HallucinationGuardService
 from app.services.retrieval import RetrievalService
 from app.services.prompt_builder import PromptBuilder
 from app.services.conversation import ConversationService
@@ -25,6 +26,7 @@ from app.services.query_enhancer import QueryEnhancer
 from app.services.query_expander import QueryExpander
 
 from app.services.reranker import Reranker
+from app.core.config import settings
 
 
 class RAGChatService:
@@ -61,6 +63,8 @@ class RAGChatService:
             max_context_tokens=4000, reserved_response_tokens=1000
         )
 
+        self.hallucination_guard = HallucinationGuardService(self.llm)
+
     def chat(self, question: str, conversation_id: str | None = None):
 
         start_time = time.perf_counter()
@@ -92,6 +96,17 @@ class RAGChatService:
         # -------------------------------
 
         queries = self.query_expander.expand(enhanced_query)
+
+        # Remove invalid queries
+        queries = [
+            q.strip() for q in queries if isinstance(q, str) and len(q.strip()) > 3
+        ]
+
+        # Remove duplicates
+        queries = list(dict.fromkeys(queries))
+
+        if not queries:
+            queries = [enhanced_query]
 
         logger.info(f"""
 Multi Query Expansion
@@ -189,7 +204,24 @@ After Cross Encoder:
 
         llm_start = time.perf_counter()
 
+        hallucination_detected = False
+        hallucination_check_time = 0.0
+
         answer = self.llm.generate(prompt)
+
+        if settings.enable_hallucination_guard:
+            hallucination_start = time.perf_counter()
+            validation = self.hallucination_guard.validate(question, context, answer)
+            hallucination_check_time = time.perf_counter() - hallucination_start
+
+            if not validation["grounded"]:
+                hallucination_detected = True
+
+                logger.warning("Hallucination detected. Regenerating response")
+
+                strict_prompt = self._build_strict_prompt(question, context)
+
+                answer = self.llm.generate(strict_prompt)
 
         llm_time = time.perf_counter() - llm_start
 
@@ -206,6 +238,8 @@ After Cross Encoder:
             embedding_time=0,
             retrieval_time=retrieval_time,
             llm_time=llm_time,
+            hallucination_check_time=hallucination_check_time,
+            hallucination_detected=hallucination_detected,
             total_time=total_time,
         )
 
@@ -233,3 +267,24 @@ Total:
             "search_evaluation": search_evaluation,
             "evaluation": evaluation,
         }
+
+    def _build_strict_prompt(self, question, context):
+
+        return f"""
+You are a strict RAG assistant.
+
+Answer ONLY from the context.
+
+If information is missing say:
+"I don't have enough information."
+
+Context:
+
+{context}
+
+
+Question:
+
+{question}
+
+"""

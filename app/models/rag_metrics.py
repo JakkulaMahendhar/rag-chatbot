@@ -20,3 +20,7 @@ class RAGMetrics(BaseModel):
     llm_time: float
 
     total_time: float
+
+    hallucination_check_time: float
+
+    hallucination_detected: bool

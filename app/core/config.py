@@ -102,6 +102,12 @@ class Settings(BaseSettings):
 
     bm25_path: str = "./storage/bm25"
 
+    # Hallucination Guard
+
+    enable_hallucination_guard: bool = True
+
+    hallucination_threshold: float = 0.75
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

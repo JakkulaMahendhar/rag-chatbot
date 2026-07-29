@@ -14,52 +14,79 @@ class QueryExpander:
         logger.info("Generating multiple search queries")
 
         prompt = f"""
-
 You are a search query generator.
 
-Generate {number_of_queries}
-search queries.
+Generate {number_of_queries} search queries.
 
 Return ONLY a JSON array.
 
 Example:
 
 [
-"Android activity lifecycle",
-"Android Activity component",
-"Activity vs Fragment"
+  "Android activity lifecycle",
+  "Android Activity component",
+  "Activity lifecycle callbacks"
 ]
 
 Rules:
-
-- No explanation
-- No numbering
+- Return valid JSON only
 - No markdown
-- No extra text
+- No explanation
+- No code block
 
 Original Query:
 
 {query}
-
 """
 
         response = self.llm.generate(prompt)
 
+        queries = []
+
         try:
+            cleaned = response.strip()
 
-            queries = json.loads(response)
+            # Remove markdown if model adds it
+            if cleaned.startswith("```"):
+                cleaned = cleaned.replace("```json", "")
+                cleaned = cleaned.replace("```", "")
+                cleaned = cleaned.strip()
 
-        except Exception:
-            queries = [q.strip("- ") for q in response.split("\n") if q.strip()]
+            queries = json.loads(cleaned)
 
-        # Safety fallback
+        except Exception as e:
+
+            logger.warning(f"Query expansion JSON parsing failed: {e}")
+
+            # Better fallback
+            lines = response.splitlines()
+
+            for line in lines:
+                ine = line.strip()
+
+                if not line:
+                    continue
+
+                if line in ["[", "]"]:
+                    continue
+
+                line = line.strip(",")
+                line = line.strip('"')
+
+                if line:
+                    queries.append(line)
+
+        # Safety
 
         if not queries:
-
             queries = [query]
 
+        # Ensure strings only
+
+        queries = [q for q in queries if isinstance(q, str)]
+
         logger.info(f"""
-Multi Query Expansion
+    Multi Query Expansion
 
 Original:
 
