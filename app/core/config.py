@@ -9,6 +9,11 @@ class Settings(BaseSettings):
 
     project_name: str = "rag-chatbot"
 
+    # Database
+    DATABASE_URL: str
+
+    DATABASE_URL_SYNC: str
+
     # =====================================================
     # Embeddings
     # =====================================================
