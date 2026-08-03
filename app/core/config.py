@@ -12,7 +12,16 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
 
+    # Sync database URL for Alembic
     DATABASE_URL_SYNC: str
+
+    # JWT Configuration
+
+    jwt_secret_key: str
+
+    jwt_algorithm: str = "HS256"
+
+    jwt_expiration_minutes: int = 30
 
     # =====================================================
     # Embeddings
