@@ -9,6 +9,15 @@ from app.database.session import get_session
 from app.database.models.user import User
 from app.database.repositories.user_repository import UserRepository
 
+from app.services.document_processor import DocumentProcessingService
+from app.services.storage import StorageService
+from app.services.parser import ParserService
+from app.services.chunker import ChunkingService
+from app.services.embedding import EmbeddingService
+
+from app.database.repositories.document_repository import DocumentRepository
+from app.database.session import get_session
+
 security = HTTPBearer()
 
 
@@ -43,3 +52,14 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     return user
+
+
+async def get_document_processing_service(session=Depends(get_session)):
+
+    return DocumentProcessingService(
+        storage_service=StorageService(),
+        parser_service=ParserService(),
+        chunking_service=ChunkingService(),
+        embedding_service=EmbeddingService(),
+        document_repository=DocumentRepository(session),
+    )

@@ -1,1 +1,2 @@
-from app.database.models.user import User
+from .user import User
+from .document import Document
