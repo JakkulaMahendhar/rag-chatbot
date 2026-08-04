@@ -17,6 +17,7 @@ from app.core.exception_handlers import (
 from app.core.middleware import RequestLoggingMiddleware
 
 from app.api.routes import search
+from app.api.document import router as documents_router
 
 
 @asynccontextmanager
@@ -38,6 +39,8 @@ app.include_router(search.router)
 app.include_router(chat.router)
 
 app.include_router(auth_router)
+
+app.include_router(documents_router)
 
 app.add_exception_handler(
     DocumentProcessingException,

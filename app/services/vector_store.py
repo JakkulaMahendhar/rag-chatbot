@@ -90,3 +90,11 @@ class VectorStoreService:
     def stats(self):
 
         return {"collection": self.collection.name, "vectors": self.collection.count()}
+
+    def delete_document(self, document_id: str):
+        """
+        Remove all embeddings related
+        to a document from ChromaDB.
+        """
+
+        self.collection.delete(where={"document_id": document_id})

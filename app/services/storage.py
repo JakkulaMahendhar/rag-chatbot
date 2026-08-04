@@ -11,10 +11,7 @@ class StorageService:
     @staticmethod
     async def save_file(file: UploadFile):
 
-        UPLOAD_DIR.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
         if not file.filename:
             raise ValueError("Filename missing")
@@ -28,3 +25,15 @@ class StorageService:
             shutil.copyfileobj(file.file, buffer)
 
         return destination
+
+    @staticmethod
+    async def delete_file(file_path: str):
+        """
+        Delete uploaded document from storage.
+        """
+
+        path = Path(file_path)
+
+        if path.exists():
+
+            path.unlink()
