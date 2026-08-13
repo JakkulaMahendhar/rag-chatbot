@@ -1,12 +1,11 @@
 from pydantic import BaseModel
-from uuid import UUID
 
 
 class BM25Document(BaseModel):
 
     chunk_id: str
 
-    document_id: UUID
+    document_id: str
 
     content: str
 

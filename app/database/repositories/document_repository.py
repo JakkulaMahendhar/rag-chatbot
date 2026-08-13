@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.document import Document
+from sqlalchemy import select
 
 
 class DocumentRepository:
@@ -80,3 +81,19 @@ class DocumentRepository:
         await self.session.delete(document)
 
         await self.session.commit()
+
+    async def get_user_document_ids(
+        self,
+        user_id: int | None = None,
+    ) -> list[str]:
+        """
+        Return all document IDs owned by a user.
+        These IDs are later used to restrict
+        semantic search to the user's documents.
+        """
+
+        result = await self.session.execute(
+            select(Document.id).where(Document.user_id == user_id)
+        )
+
+        return list(result.scalars().all())

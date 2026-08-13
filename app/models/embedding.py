@@ -8,7 +8,7 @@ class DocumentEmbedding(BaseModel):
 
     chunk_id: str
 
-    document_id: UUID
+    document_id: str
 
     embedding: list[float]
 

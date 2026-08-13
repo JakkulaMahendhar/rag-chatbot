@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -8,7 +7,7 @@ class DocumentChunk(BaseModel):
 
     chunk_id: str
 
-    document_id: UUID
+    document_id: str
 
     content: str
 

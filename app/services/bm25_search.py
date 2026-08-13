@@ -34,29 +34,76 @@ class BM25SearchService:
 
         self.save()
 
-    def _build_index(self):
+    # def _build_index(self):
 
-        tokenized_documents = [
-            document.content.lower().split() for document in self.documents
-        ]
+    #     tokenized_documents = [
+    #         document.content.lower().split() for document in self.documents
+    #     ]
 
-        self.index = BM25Okapi(tokenized_documents)
+    #     self.index = BM25Okapi(tokenized_documents)
 
-        logger.info(f"BM25 index built | Documents={len(self.documents)}")
+    #     logger.info(f"BM25 index built | Documents={len(self.documents)}")
 
-    def search(self, query: str, top_k: int = 3):
+    def search(
+        self,
+        query: str,
+        top_k: int = 3,
+        document_ids: list[str] | None = None,
+    ):
+        """
+        Perform BM25 keyword search.
+
+        document_ids are PostgreSQL document IDs.
+        """
 
         if not self.index:
-
             logger.warning("BM25 index unavailable")
-
             return []
 
         tokens = query.lower().split()
 
         scores = self.index.get_scores(tokens)
 
-        ranked = sorted(range(len(scores)), key=lambda x: scores[x], reverse=True)
+        allowed_document_ids = (
+            {str(document_id) for document_id in document_ids} if document_ids else None
+        )
+
+        logger.info(f"BM25 document filter | " f"Allowed IDs={allowed_document_ids}")
+
+        # ---------------------------------------------
+        # Debug ownership mapping
+        # ---------------------------------------------
+
+        for document in self.documents:
+
+            logger.info(
+                f"BM25 chunk | "
+                f"chunk_id={document.chunk_id} | "
+                f"document_id={document.document_id} | "
+                f"metadata.document_id="
+                f"{document.metadata.get('document_id')}"
+            )
+
+        # ---------------------------------------------
+        # Filter by PostgreSQL document ID
+        # ---------------------------------------------
+
+        ranked = sorted(
+            [
+                idx
+                for idx, document in enumerate(self.documents)
+                if (
+                    allowed_document_ids is None
+                    or str(document.document_id) in allowed_document_ids
+                )
+            ],
+            key=lambda idx: scores[idx],
+            reverse=True,
+        )
+
+        # ---------------------------------------------
+        # Build results
+        # ---------------------------------------------
 
         results = []
 
@@ -67,12 +114,20 @@ class BM25SearchService:
             results.append(
                 {
                     "chunk_id": doc.chunk_id,
-                    "document_id": doc.document_id,
+                    "document_id": str(doc.document_id),
                     "content": doc.content,
                     "metadata": doc.metadata,
                     "score": float(scores[idx]),
                 }
             )
+
+        logger.info(
+            f"BM25 search completed | "
+            f"Candidates={len(ranked)} | "
+            f"Results={len(results)} | "
+            f"Documents="
+            f"{len(allowed_document_ids) if allowed_document_ids else 'all'}"
+        )
 
         return results
 

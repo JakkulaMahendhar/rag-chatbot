@@ -1,11 +1,8 @@
-from uuid import uuid4
-
 from fastapi import UploadFile
 
 from app.core.exceptions import DocumentProcessingException
 from app.core.logger import logger
 
-from app.services.storage import StorageService
 from app.services.parser import ParserService
 from app.services.chunker import ChunkingService
 from app.services.chunk_storage import ChunkStorageService
@@ -41,31 +38,18 @@ class DocumentProcessingService:
 
             # -----------------------------------
             # Save File
-            #
-            # Store physical file first.
-            # Only after successful storage
-            # we create database ownership record.
             # -----------------------------------
 
             location = await self.storage_service.save_file(file)
 
             # -----------------------------------
             # Persist Document Ownership
-            #
-            # Create relationship between:
-            #
-            # User
-            #   |
-            #   | owns
-            #   |
-            # Document
-            #
-            # This enables user-level document
-            # isolation in future RAG queries.
             # -----------------------------------
 
             document = Document(
-                user_id=user_id, filename=file.filename, file_path=str(location)
+                user_id=user_id,
+                filename=file.filename,
+                file_path=str(location),
             )
 
             await self.document_repository.create(document)
@@ -77,34 +61,29 @@ class DocumentProcessingService:
             text = self.parser_service.parse(location)
 
             # -----------------------------------
-            # Generate Document Identifier
+            # PostgreSQL Document ID
             #
-            # This ID is used internally during
-            # processing pipeline.
-            #
-            # PostgreSQL document.id remains the
-            # source of truth for ownership.
+            # This is the SINGLE document ID
+            # used throughout the retrieval pipeline.
             # -----------------------------------
 
-            # PostgreSQL ID
-            database_document_id = document.id
+            database_document_id = str(document.id)
 
-            # Vector pipeline ID
-            vector_document_id = uuid4()
+            logger.info(
+                f"Processing document | "
+                f"document_id={database_document_id} | "
+                f"user_id={user_id}"
+            )
 
             # -----------------------------------
-            # Chunk Generation
+            # Generate Chunks
             # -----------------------------------
 
             chunks = self.chunking_service.split(
                 text=text,
-                document_id=vector_document_id,
+                document_id=database_document_id,
                 metadata={
-                    # PostgreSQL document reference
-                    "document_id": str(vector_document_id),
-                    "database_document_id": database_document_id,
-                    # Owner reference
-                    # Required for multi-user RAG isolation
+                    "document_id": database_document_id,
                     "user_id": str(user_id),
                     "filename": location.name,
                     "type": location.suffix,
@@ -117,7 +96,10 @@ class DocumentProcessingService:
             # Save Chunks
             # -----------------------------------
 
-            ChunkStorageService.save(document_id=str(vector_document_id), chunks=chunks)
+            ChunkStorageService.save(
+                document_id=database_document_id,
+                chunks=chunks,
+            )
 
             # -----------------------------------
             # Generate Embeddings
@@ -125,31 +107,30 @@ class DocumentProcessingService:
 
             embeddings = self.embedding_service.generate(chunks)
 
+            # -----------------------------------
+            # Save Embeddings
+            # -----------------------------------
+
             EmbeddingStorageService.save(
-                document_id=str(vector_document_id), embeddings=embeddings
+                document_id=database_document_id,
+                embeddings=embeddings,
             )
 
             # -----------------------------------
-            # Store Vector Embeddings
-            #
-            # Chroma metadata contains:
-            #
-            # document_id
-            # user_id
-            #
-            # This enables filtering during
-            # authenticated retrieval.
+            # Store Chroma Vectors
             # -----------------------------------
 
             vector_store = VectorStoreService()
 
-            vector_store.add_chunks(chunks=chunks, embeddings=embeddings)
+            vector_store.add_chunks(
+                chunks=chunks,
+                embeddings=embeddings,
+            )
 
             logger.info("Document stored successfully in vector database")
 
             # -----------------------------------
-            # Sprint 9.5.2
-            # Store BM25 Index
+            # Store BM25
             # -----------------------------------
 
             bm25_service = BM25SearchService()
@@ -161,7 +142,7 @@ class DocumentProcessingService:
                 bm25_documents.append(
                     BM25Document(
                         chunk_id=str(chunk.chunk_id),
-                        document_id=chunk.document_id,
+                        document_id=str(chunk.metadata["document_id"]),
                         content=chunk.content,
                         metadata=chunk.metadata,
                     )
@@ -172,7 +153,7 @@ class DocumentProcessingService:
             logger.info("Document stored successfully in BM25 index")
 
             return {
-                "document_id": str(document.id),
+                "document_id": database_document_id,
                 "filename": location.name,
                 "size": location.stat().st_size,
                 "extracted_characters": len(text),

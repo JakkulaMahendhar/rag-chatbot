@@ -20,16 +20,22 @@ class HybridSearchService:
         query_embedding: list[float],
         query: str,
         top_k: int = settings.hybrid_top_k,
+        document_ids: list[str] | None = None,
     ):
 
         logger.info("Starting hybrid search")
+
+        # TEMPORARY DEBUG
+        self.vector_store.debug_all_chunks()
 
         # ==================================================
         # Vector Search
         # ==================================================
 
         vector_results = self.vector_store.search(
-            query_embedding=query_embedding, top_k=settings.top_k_vector
+            query_embedding=query_embedding,
+            top_k=settings.top_k_vector,
+            document_ids=document_ids,
         )
 
         logger.info(f"Vector results: {len(vector_results)}")
@@ -40,7 +46,11 @@ class HybridSearchService:
         # BM25 Search
         # ==================================================
 
-        bm25_results = self.bm25_service.search(query=query, top_k=settings.top_k_bm25)
+        bm25_results = self.bm25_service.search(
+            query=query,
+            top_k=settings.top_k_bm25,
+            document_ids=document_ids,
+        )
 
         self._normalize_bm25_scores(bm25_results)
 
