@@ -55,10 +55,17 @@ jobs:
             --ignore=tests/test_embedding.py \
             --ignore=tests/test_retrieval.py \
             --ignore=tests/test_vector_stats.py \
-            --ignore=tests/test_connections.py
+            --ignore=tests/test_connections.py \
+            --ignore=tests/test_llm.py
         # Excluded files are pre-existing failures unrelated to CI setup,
         # confirmed during Sprint 11 (not introduced by it):
         #   test_gemini.py       - needs a real Gemini API key/credentials
+        #   test_llm.py          - calls AIServiceRegistry.get_llm().generate()
+        #                          for real; with LLM_PROVIDER=ollama that
+        #                          needs a real Ollama daemon reachable over
+        #                          the network, which the GitHub-hosted
+        #                          runner doesn't have (passes locally only
+        #                          because Ollama happens to be running there)
         #   test_settings.py     - hardcodes an assumption that
         #                          LLM_PROVIDER=gemini
         #   test_bm25.py,
