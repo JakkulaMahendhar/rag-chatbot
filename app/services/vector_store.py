@@ -27,6 +27,12 @@ class VectorStoreService:
             f"Vectors={self.collection.count()}"
         )
 
+        logger.info(f"Chroma collection metadata | " f"{self.collection.metadata}")
+
+        logger.info(
+            f"Chroma collection configuration | " f"{self.collection.configuration}"
+        )
+
     # ==========================================================
     # ADD CHUNKS
     # ==========================================================
@@ -72,7 +78,7 @@ class VectorStoreService:
             # before executing the query.
             # --------------------------------------------------
 
-            self.debug_all_chunks()
+            # self.debug_all_chunks()
 
             # --------------------------------------------------
             # Build Chroma filter

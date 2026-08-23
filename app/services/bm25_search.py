@@ -172,10 +172,12 @@ class BM25SearchService:
         Remove document and related chunks from BM25 index.
         """
 
+        document_id = str(document_id)
+
         logger.info(f"Deleting document from BM25 | document_id={document_id}")
 
         self.documents = [
-            doc for doc in self.documents if doc.document_id != document_id
+            doc for doc in self.documents if str(doc.document_id) != document_id
         ]
 
         self._build_index()

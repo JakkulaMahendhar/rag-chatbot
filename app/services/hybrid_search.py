@@ -26,7 +26,7 @@ class HybridSearchService:
         logger.info("Starting hybrid search")
 
         # TEMPORARY DEBUG
-        self.vector_store.debug_all_chunks()
+        # self.vector_store.debug_all_chunks()
 
         # ==================================================
         # Vector Search
@@ -244,10 +244,26 @@ Score:
     # ==================================================
 
     def _normalize_distance(self, distance: float):
+        """
+        Convert Chroma L2 distance into a normalized similarity score.
 
-        # Lower distance = better similarity
+        L2 distance:
+        0 = identical
+        Higher value = less similar
 
-        return max(0, 1 - distance)
+        Similarity:
+        1 / (1 + distance)
+
+        This converts any non-negative L2 distance
+        into a score between 0 and 1.
+        """
+
+        if distance is None:
+            return 0.0
+
+        distance = max(0.0, float(distance))
+
+        return 1.0 / (1.0 + distance)
 
     # ==================================================
     # BM25 Score Normalization
