@@ -922,60 +922,79 @@ Environment driven configuration.
 
 ---
 
-# 🗺️ Future Roadmap
+# ✅ Sprint 6 - Vector Database Integration
 
+## Objective
 
-## Sprint 6
+Persist embeddings so retrieval survives restarts and scales beyond memory.
 
-Vector Database Integration
+## Implemented
 
-- ChromaDB
-- Persistent storage
-- Similarity search
-
-
----
-
-## Sprint 7
-
-Semantic Retrieval
-
-- Query embeddings
-- Top-K search
-- Ranking
+- ChromaDB persistent client
+- Collection-based vector storage
+- Similarity search by embedding
+- Chunk-to-vector linkage
 
 
 ---
 
-## Sprint 8
+# ✅ Sprint 7 - Semantic Retrieval
 
-LLM Integration
+## Objective
 
+Turn a user question into ranked, relevant document chunks.
 
-Support:
+## Implemented
 
-- OpenAI
-- Gemini
-- Ollama
+- Query embedding generation
+- Top-K similarity search
+- Distance-threshold filtering
+- Retrieval service abstraction layer (Sprint 7.1)
+- Centralized application configuration (Sprint 7.2)
 
 
 ---
 
-## Sprint 9
+# ✅ Sprint 8 - LLM Integration
 
-Complete RAG Pipeline
+## Objective
 
+Generate natural-language answers from retrieved context.
+
+## Implemented
+
+- Configurable LLM registry
+- Ollama provider
+- Gemini provider
+- Provider abstraction (`app/services/llm/base.py`)
+
+
+---
+
+# ✅ Sprint 9 - Complete RAG Pipeline
+
+## Objective
+
+Wire retrieval and generation into a single conversational system.
 
 ```
 Question
 
  ↓
 
-Retriever
+Query Enhancement / Expansion
 
  ↓
 
-Context
+Hybrid Retrieval (Vector + BM25)
+
+ ↓
+
+Cross-Encoder Reranking
+
+ ↓
+
+Context Window Management
 
  ↓
 
@@ -983,22 +1002,50 @@ LLM
 
  ↓
 
-Answer
+Hallucination Guard
+
+ ↓
+
+Answer + Source Citations
 ```
 
+## Implemented
+
+- End-to-end `/chat` API
+- Prompt builder with context-aware generation
+- Conversation memory (multi-turn history, `conversation_id`)
+- Hybrid search (BM25 + vector fusion)
+- Cross-encoder reranking
+- Conversation-aware query rewriting
+- Query expansion
+- Context window manager (dedup, compression, ranking, formatting)
+- Source references / context-aware citations
+- Hallucination guard
+- RAG and search evaluation metrics
+
 
 ---
 
-## Sprint 10
+# ✅ Sprint 10 - Enterprise Features
 
-Enterprise Features
+## Objective
 
-- Authentication
-- PostgreSQL
-- User management
+Make the system multi-user and production-safe.
+
+## Implemented
+
+- PostgreSQL integration via SQLAlchemy (async)
+- Alembic migrations (`users`, `documents` tables)
+- JWT-based authentication (register / login / `/auth/me`)
+- Password hashing and security utilities
+- Document ownership model
+- Per-user document listing, retrieval, and deletion
+- Access-scoped retrieval — RAG chat only searches documents owned by the authenticated user
 
 
 ---
+
+# 🗺️ Future Roadmap
 
 ## Sprint 11
 
