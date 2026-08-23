@@ -19,6 +19,16 @@ embeddings/
 
 # Chroma database
 vector_db/
+chroma_db/
+
+# BM25 index
+storage/bm25/
+
+# Logs
+logs/
+
+# Test cache
+.pytest_cache/
 
 # IDE
 .vscode/
