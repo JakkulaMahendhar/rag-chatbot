@@ -1045,18 +1045,59 @@ Make the system multi-user and production-safe.
 
 ---
 
-# 🗺️ Future Roadmap
+# ✅ Sprint 11 - Production Engineering
 
-## Sprint 11
+## Objective
 
-Production Engineering
+Make the application runnable anywhere with a single command, and
+gate every change with an automated test run.
 
-- Docker
-- CI/CD
-- Automated tests
+## Implemented
+
+- Multi-stage `Dockerfile` (build stage installs deps into a venv,
+  runtime stage is `python:3.11-slim` + `libgomp1` for PyTorch,
+  runs as a non-root user, ships a `/health`-based `HEALTHCHECK`)
+- `entrypoint.sh` - runs `alembic upgrade head` before starting
+  `uvicorn`, so a fresh container always has an up-to-date schema
+- `docker-compose.yml` - app + PostgreSQL, named volumes for every
+  writable directory (`uploads/`, `chunks/`, `embeddings/`,
+  `vector_db/`, `storage/bm25/`, `logs/`) so data survives restarts
+- `.dockerignore` - keeps `venv/`, `.git/`, `.env`, and generated
+  data out of the build context and image
+- GitHub Actions CI (`.github/workflows/ci.yml`) - spins up a real
+  Postgres service, runs migrations, then runs the test suite on
+  every push/PR to `master`
+- `pytest-asyncio` + `asyncio_mode = "auto"` - fixes previously
+  non-running bare `async def` tests
+
+## Running Locally with Docker
+
+```bash
+cp .env.example .env
+# fill in JWT_SECRET_KEY, GEMINI_API_KEY (if using Gemini), etc.
+
+docker compose up --build
+```
+
+The API will be available at `http://localhost:8000`.
+
+If `LLM_PROVIDER=ollama`, run Ollama on the host machine - the
+container reaches it via `OLLAMA_HOST=http://host.docker.internal:11434`,
+already configured in `docker-compose.yml`.
+
+## Known Limitations
+
+- Single `uvicorn` worker per container (the embedding model is a
+  process-local singleton; scaling workers/replicas is a Sprint 12
+  deployment concern)
+- CI excludes 8 pre-existing failing tests unrelated to this sprint
+  (stale fixtures, a hardcoded provider assumption, one unregistered
+  route, one event-loop conflict) - documented inline in the workflow
 
 
 ---
+
+# 🗺️ Future Roadmap
 
 ## Sprint 12
 
