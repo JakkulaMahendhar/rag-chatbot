@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.upload import router as upload_router
 from app.core.ai_registry import AIServiceRegistry
+from app.core.config import settings
 from app.api.routes import health
 from app.api import chat
 from app.auth.router import router as auth_router
@@ -53,6 +56,20 @@ app.add_exception_handler(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+
+_cors_origins = (
+    ["*"]
+    if settings.allowed_origins.strip() == "*"
+    else [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")

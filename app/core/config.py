@@ -122,6 +122,21 @@ class Settings(BaseSettings):
 
     hallucination_threshold: float = 0.75
 
+    # =====================================================
+    # CORS
+    # =====================================================
+
+    # Comma-separated list of allowed origins, or "*" for all
+    allowed_origins: str = "*"
+
+    # =====================================================
+    # Auth Rate Limiting
+    # =====================================================
+
+    auth_rate_limit_attempts: int = 5
+
+    auth_rate_limit_window_seconds: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
