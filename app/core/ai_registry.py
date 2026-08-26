@@ -1,5 +1,3 @@
-from sentence_transformers import SentenceTransformer
-
 from app.core.config import settings
 from app.services.llm.gemini import GeminiService
 from app.services.llm.ollama import OllamaService
@@ -21,6 +19,13 @@ class AIServiceRegistry:
     def get_embedding_model(cls):
 
         if cls._embedding_model is None:
+
+            # Deferred import: sentence_transformers pulls in torch, which
+            # is expensive to import (not just to load a model with) on a
+            # memory/CPU-constrained host. Keeping it out of this module's
+            # top-level imports means it isn't paid at process startup at
+            # all - only on the first call that actually needs it.
+            from sentence_transformers import SentenceTransformer
 
             print(
                 f"Loading embedding model: {settings.embedding_model}"

@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from app.models.chunk import DocumentChunk
 from app.core.config import settings
 
@@ -11,6 +9,13 @@ class ChunkingService:
     def __init__(
         self
     ):
+
+        # Deferred import - langchain_text_splitters' own __init__.py pulls
+        # in torch/transformers regardless of which splitter class is used
+        # (it re-exports token-based splitters too), even though
+        # RecursiveCharacterTextSplitter itself needs neither. See
+        # app/core/ai_registry.py for the same pattern.
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,

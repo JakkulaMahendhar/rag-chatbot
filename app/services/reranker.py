@@ -1,4 +1,3 @@
-from sentence_transformers import CrossEncoder
 from app.core.logger import logger
 import math
 
@@ -6,6 +5,9 @@ import math
 class Reranker:
 
     def __init__(self):
+
+        # Deferred import - see app/core/ai_registry.py for why.
+        from sentence_transformers import CrossEncoder
 
         logger.info("Initializing Cross Encoder Reranker")
 
