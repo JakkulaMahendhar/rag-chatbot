@@ -1,0 +1,46 @@
+# Render Blueprint - deploys the app as a Docker web service against a
+# managed free-tier Postgres. See README.md "Sprint 12" for full context,
+# including the free-tier tradeoff: no persistent disk on the free plan,
+# so uploaded documents / vector index / BM25 index do not survive a
+# redeploy or a scale-to-zero cold start. Upgrade both plans below to a
+# paid tier + attach a disk when that matters.
+
+databases:
+  - name: rag-chatbot-db
+    plan: free
+    databaseName: rag_chatbot
+    user: rag_user
+
+services:
+  - type: web
+    name: rag-chatbot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Render's Postgres connection string has no SQLAlchemy driver
+      # suffix; entrypoint.sh derives DATABASE_URL/DATABASE_URL_SYNC
+      # from this at container startup.
+      - key: DATABASE_CONNECTION_STRING
+        fromDatabase:
+          name: rag-chatbot-db
+          property: connectionString
+
+      # Secrets - not stored in this file. Render will prompt for these
+      # in the dashboard on first deploy.
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # Ollama needs a locally reachable daemon, which doesn't exist on
+      # Render - Gemini is the only LLM_PROVIDER option that works here.
+      - key: LLM_PROVIDER
+        value: gemini
+
+      # Every other setting (embedding model, chunk size, retrieval
+      # thresholds, CORS, rate limiting, etc.) already has a sensible
+      # default in app/core/config.py and doesn't need to be repeated
+      # here. Add an entry above only to override one of those defaults
+      # for this deployment specifically.

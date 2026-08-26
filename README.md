@@ -1097,18 +1097,52 @@ already configured in `docker-compose.yml`.
 
 ---
 
-# 🗺️ Future Roadmap
+# ✅ Sprint 12 - Deployment
 
-## Sprint 12
+## Objective
 
-Deployment
+Get the app running on a real, publicly-reachable host, with database
+and secrets managed outside the codebase.
 
+## Platform
 
-Targets:
+**Render**, chosen over AWS/Azure for this stage: a single
+`render.yaml` blueprint versus manually wiring ECS/Fargate + RDS +
+IAM (AWS) or Container Apps + Azure Database for PostgreSQL (Azure).
+AWS/Azure are worth revisiting later specifically for that
+experience - not needed to get this project live.
 
-- AWS
-- Azure
-- Render
+## Implemented
+
+- `render.yaml` - Blueprint defining a Docker-based web service
+  (built from the Sprint 11 `Dockerfile`, no changes to it needed)
+  plus a managed free-tier PostgreSQL database
+- `entrypoint.sh` - now binds to Render's dynamically-assigned
+  `$PORT` (falls back to `8000` locally, so Docker Compose is
+  unaffected), and derives driver-qualified `DATABASE_URL` /
+  `DATABASE_URL_SYNC` from Render's plain Postgres connection string
+  at container startup, without touching `app/core/config.py`
+- Secrets (`JWT_SECRET_KEY`, `GEMINI_API_KEY`) declared as
+  `sync: false` in the blueprint - Render prompts for them in its
+  dashboard rather than storing them in git
+
+## Free Tier Tradeoff
+
+Render's free web services cannot attach a persistent disk, and free
+Postgres is capped at 1GB and deleted 30 days after creation. This
+app writes documents/vectors/BM25 index to the local filesystem
+(`vector_db/`, `storage/bm25/`, `uploads/`, `chunks/`, `embeddings/`)
+- on the free tier, that data does **not** survive a redeploy or a
+scale-to-zero cold start. Fine for a live demo; upgrade the web
+service to a paid plan with an attached disk, and the database past
+its 30-day window, once persistence actually matters.
+
+## LLM Provider
+
+Only `gemini` works as `LLM_PROVIDER` on Render - `ollama` needs a
+locally reachable daemon, which doesn't exist on a cloud host. A
+real `GEMINI_API_KEY` must be set in Render's dashboard for `/chat`
+to work; every other route works without one.
 
 
 ---
