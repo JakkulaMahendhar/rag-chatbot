@@ -39,6 +39,16 @@ services:
       - key: LLM_PROVIDER
         value: gemini
 
+      # The free/Starter plans cap out at 512MB RAM, and PyTorch's
+      # multi-threaded buffer allocation can meaningfully add to its
+      # baseline memory footprint. Capped here only (not in
+      # docker-compose.yml/.env.example) - local dev has more cores and
+      # no memory ceiling, so there's no reason to slow it down there.
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
+
       # Every other setting (embedding model, chunk size, retrieval
       # thresholds, CORS, rate limiting, etc.) already has a sensible
       # default in app/core/config.py and doesn't need to be repeated

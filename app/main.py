@@ -1,10 +1,7 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.upload import router as upload_router
-from app.core.ai_registry import AIServiceRegistry
 from app.core.config import settings
 from app.api.routes import health
 from app.api import chat
@@ -23,15 +20,7 @@ from app.api.routes import search
 from app.api.document import router as documents_router
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-
-    AIServiceRegistry.get_embedding_model()
-
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.include_router(upload_router)
 
