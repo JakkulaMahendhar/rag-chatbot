@@ -1,12 +1,9 @@
-from fastapi import UploadFile
+from pathlib import Path
 
 from app.core.exceptions import DocumentProcessingException
 from app.core.logger import logger
 
-from app.services.parser import ParserService
-from app.services.chunker import ChunkingService
 from app.services.chunk_storage import ChunkStorageService
-from app.services.embedding import EmbeddingService
 from app.services.embedding_storage import EmbeddingStorageService
 from app.services.vector_store import VectorStoreService
 from app.services.bm25_search import BM25SearchService
@@ -17,42 +14,34 @@ from app.database.models.document import Document
 
 
 class DocumentProcessingService:
+    """
+    Slow phase of document upload: parse, chunk, embed, and index
+    an already-saved document. Run by the worker (app/worker.py),
+    not the web request - see DocumentRegistrationService for the
+    fast phase that runs inline in the request.
+    """
 
     def __init__(
         self,
-        storage_service,
         parser_service,
         chunking_service,
         embedding_service,
         document_repository,
     ):
-        self.storage_service = storage_service
         self.parser_service = parser_service
         self.chunking_service = chunking_service
         self.embedding_service = embedding_service
         self.document_repository = document_repository
 
-    async def process(self, file: UploadFile, user_id: int):
+    async def process_document(self, document: Document) -> dict:
 
         try:
 
-            # -----------------------------------
-            # Save File
-            # -----------------------------------
+            document.status = "processing"
 
-            location = await self.storage_service.save_file(file)
+            await self.document_repository.save(document)
 
-            # -----------------------------------
-            # Persist Document Ownership
-            # -----------------------------------
-
-            document = Document(
-                user_id=user_id,
-                filename=file.filename,
-                file_path=str(location),
-            )
-
-            await self.document_repository.create(document)
+            location = Path(document.file_path)
 
             # -----------------------------------
             # Parse Document
@@ -72,7 +61,7 @@ class DocumentProcessingService:
             logger.info(
                 f"Processing document | "
                 f"document_id={database_document_id} | "
-                f"user_id={user_id}"
+                f"user_id={document.user_id}"
             )
 
             # -----------------------------------
@@ -84,7 +73,7 @@ class DocumentProcessingService:
                 document_id=database_document_id,
                 metadata={
                     "document_id": database_document_id,
-                    "user_id": str(user_id),
+                    "user_id": str(document.user_id),
                     "filename": location.name,
                     "type": location.suffix,
                 },
@@ -152,6 +141,10 @@ class DocumentProcessingService:
 
             logger.info("Document stored successfully in BM25 index")
 
+            document.status = "completed"
+
+            await self.document_repository.save(document)
+
             return {
                 "document_id": database_document_id,
                 "filename": location.name,
@@ -164,5 +157,10 @@ class DocumentProcessingService:
         except Exception as e:
 
             logger.exception("Document processing failed")
+
+            document.status = "failed"
+            document.error_message = str(e)[:2000]
+
+            await self.document_repository.save(document)
 
             raise DocumentProcessingException("Unable to process document.") from e

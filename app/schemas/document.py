@@ -13,5 +13,9 @@ class DocumentResponse(BaseModel):
 
     uploaded_at: datetime
 
+    status: str
+
+    error_message: str | None = None
+
     class Config:
         from_attributes = True

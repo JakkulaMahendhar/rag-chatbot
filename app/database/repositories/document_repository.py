@@ -97,3 +97,30 @@ class DocumentRepository:
         )
 
         return list(result.scalars().all())
+
+    async def get_pending_documents(self, limit: int = 5) -> list[Document]:
+        """
+        Fetch documents awaiting processing by the worker,
+        oldest first.
+        """
+
+        result = await self.session.execute(
+            select(Document)
+            .where(Document.status == "pending")
+            .order_by(Document.uploaded_at.asc())
+            .limit(limit)
+        )
+
+        return list(result.scalars().all())
+
+    async def save(self, document: Document):
+        """
+        Persist changes to an already-tracked document
+        (e.g. status/error_message updates).
+        """
+
+        await self.session.commit()
+
+        await self.session.refresh(document)
+
+        return document

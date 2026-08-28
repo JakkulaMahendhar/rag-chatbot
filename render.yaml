@@ -54,3 +54,40 @@ services:
       # default in app/core/config.py and doesn't need to be repeated
       # here. Add an entry above only to override one of those defaults
       # for this deployment specifically.
+
+  # Background worker: picks up documents left in status="pending" by
+  # POST /upload and runs the actual parse/chunk/embed/index pipeline,
+  # so the web service never has to hold that work (or its PyTorch
+  # memory footprint) during an HTTP request. Same Dockerfile and
+  # image as the web service, different start command.
+  #
+  # IMPORTANT - plan choice below is a placeholder, not a
+  # recommendation: Render has no free tier for background workers
+  # (Starter, $7/mo, is the minimum). Starter is *also* capped at
+  # 512MB RAM - the same ceiling that caused the original OOM - so
+  # Starter alone does not fix that, it only isolates it to this
+  # service instead of the web one. To actually fix it, either bump
+  # this to `plan: standard` ($25/mo, 2GB RAM) or pair this worker
+  # with a lighter/hosted embedding approach that doesn't need
+  # PyTorch. Decide before deploying this service.
+  - type: worker
+    name: rag-chatbot-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: ./worker_entrypoint.sh
+    plan: starter
+    envVars:
+      - key: DATABASE_CONNECTION_STRING
+        fromDatabase:
+          name: rag-chatbot-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"

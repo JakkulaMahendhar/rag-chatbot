@@ -43,6 +43,34 @@ services:
       - bm25_data:/app/storage/bm25
       - logs_data:/app/logs
 
+  worker:
+    build: .
+    entrypoint: ["./worker_entrypoint.sh"]
+    # The Dockerfile's HEALTHCHECK checks localhost:8000/health, which
+    # only exists on the web service - the worker runs no HTTP server
+    # at all, so that check would never pass and this container would
+    # sit at "unhealthy" forever despite working correctly.
+    healthcheck:
+      disable: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rag_user:rag_password@db:5432/rag_chatbot
+      DATABASE_URL_SYNC: postgresql+psycopg2://rag_user:rag_password@db:5432/rag_chatbot
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - chunks_data:/app/chunks
+      - embeddings_data:/app/embeddings
+      - vector_db_data:/app/vector_db
+      - bm25_data:/app/storage/bm25
+      - logs_data:/app/logs
+
 volumes:
   postgres_data:
   uploads_data:

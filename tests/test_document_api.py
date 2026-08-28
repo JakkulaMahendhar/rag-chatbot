@@ -1,4 +1,11 @@
 def _upload_sample(client, headers):
+    """
+    Registers a document and returns its id. Upload only performs the
+    fast registration phase (save file + create a "pending" row) -
+    actual processing happens in the worker, not inline, so document
+    status here is "pending", not "completed". See
+    test_document_processor.py for the processing pipeline itself.
+    """
 
     with open("tests/sample.txt", "rb") as f:
 
@@ -8,7 +15,8 @@ def _upload_sample(client, headers):
             headers=headers,
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "pending"
 
     return int(response.json()["document_id"])
 
@@ -43,6 +51,7 @@ def test_upload_list_get_delete_document(client, register_user):
 
     assert detail.status_code == 200
     assert detail.json()["filename"] == "sample.txt"
+    assert detail.json()["status"] == "pending"
 
     delete = client.delete(f"/documents/{document_id}", headers=user["headers"])
 

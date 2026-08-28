@@ -44,13 +44,14 @@ COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini .
 COPY entrypoint.sh .
+COPY worker_entrypoint.sh .
 
 # Runtime-writable directories used by StorageService, ChunkStorageService,
 # EmbeddingStorageService, VectorStoreService (Chroma) and BM25SearchService.
 # Mounted as volumes in docker-compose so data survives container restarts.
 RUN mkdir -p uploads chunks embeddings vector_db storage/bm25 logs \
     && chown -R appuser:appuser /app \
-    && chmod +x entrypoint.sh
+    && chmod +x entrypoint.sh worker_entrypoint.sh
 
 USER appuser
 
@@ -59,4 +60,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-ENTRYPOINT ["./entrypoint.sh"]
+CMD ["./entrypoint.sh"]
