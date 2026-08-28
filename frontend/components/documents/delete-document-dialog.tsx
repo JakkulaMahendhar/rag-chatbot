@@ -30,7 +30,7 @@ export function DeleteDocumentDialog({
   return (
     <AlertDialog>
       <AlertDialogTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={`Delete ${filename}`} />}
+        render={<Button variant="destructive" size="icon-sm" aria-label={`Delete ${filename}`} />}
       >
         <Trash2 className="size-4" />
       </AlertDialogTrigger>
