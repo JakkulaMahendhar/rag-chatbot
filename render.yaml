@@ -91,3 +91,21 @@ services:
         value: "1"
       - key: TOKENIZERS_PARALLELISM
         value: "false"
+
+  # Frontend - a plain static export (see frontend/next.config.ts), not
+  # a Node web service: the app has no server-only features (no API
+  # routes, no server actions, no next/image), so there's nothing that
+  # actually needs a running server. Free to host as a static site.
+  #
+  # NEXT_PUBLIC_API_URL isn't declared here - Next.js inlines
+  # NEXT_PUBLIC_ vars into the client bundle at `next build` time, and
+  # whether Render exposes Blueprint envVars during a static site's
+  # build step specifically isn't documented. frontend/.env.production
+  # is committed (it's a public URL, not a secret) so the build works
+  # the same regardless of that platform detail.
+  - type: web
+    name: rag-chatbot-frontend
+    runtime: static
+    rootDir: ./frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./out

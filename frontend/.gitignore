@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# NEXT_PUBLIC_API_URL is a public URL, not a secret, and must be
+# present at `next build` time for a static export to work reliably
+# regardless of the hosting platform's env-var-at-build-time behavior.
+!.env.production
 
 # vercel
 .vercel
