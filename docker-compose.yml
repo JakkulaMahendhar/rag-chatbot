@@ -15,6 +15,35 @@ services:
       timeout: 5s
       retries: 10
 
+  chroma:
+    # Runs as its own server so the app and worker (separate processes)
+    # can both access the same vector data safely - Chroma's embedded
+    # PersistentClient isn't designed for concurrent multi-process
+    # access, which was the root cause of intermittent
+    # "Error finding id" failures when both processes opened it
+    # directly. Pinned to match the chromadb version in requirements.txt.
+    image: chromadb/chroma:1.5.9
+    volumes:
+      - vector_db_data:/chroma/chroma
+    ports:
+      - "8001:8000"
+    healthcheck:
+      # No curl/wget/python in this image (verified) - bash's built-in
+      # /dev/tcp is the only dependency-free way to check it's serving.
+      # Must invoke bash explicitly: CMD-SHELL runs via /bin/sh, which
+      # is dash here (also verified present) - /dev/tcp doesn't exist
+      # in dash and would silently fail under CMD-SHELL.
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/localhost/8000 && printf 'GET /api/v2/heartbeat HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && head -1 <&3 | grep -q 200",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
     env_file:
@@ -25,6 +54,9 @@ services:
       # stay valid for running the app outside Docker).
       DATABASE_URL: postgresql+asyncpg://rag_user:rag_password@db:5432/rag_chatbot
       DATABASE_URL_SYNC: postgresql+psycopg2://rag_user:rag_password@db:5432/rag_chatbot
+      # The Chroma server, not localhost - see the "chroma" service above.
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
       # Only used when LLM_PROVIDER=ollama: lets the container reach
       # Ollama running on the host machine instead of itself.
       OLLAMA_HOST: http://host.docker.internal:11434
@@ -33,13 +65,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      chroma:
+        condition: service_healthy
     ports:
       - "8000:8000"
     volumes:
       - uploads_data:/app/uploads
       - chunks_data:/app/chunks
       - embeddings_data:/app/embeddings
-      - vector_db_data:/app/vector_db
       - bm25_data:/app/storage/bm25
       - logs_data:/app/logs
 
@@ -57,17 +90,20 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://rag_user:rag_password@db:5432/rag_chatbot
       DATABASE_URL_SYNC: postgresql+psycopg2://rag_user:rag_password@db:5432/rag_chatbot
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
       OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
+      chroma:
+        condition: service_healthy
     volumes:
       - uploads_data:/app/uploads
       - chunks_data:/app/chunks
       - embeddings_data:/app/embeddings
-      - vector_db_data:/app/vector_db
       - bm25_data:/app/storage/bm25
       - logs_data:/app/logs
 

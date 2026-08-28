@@ -47,9 +47,10 @@ COPY entrypoint.sh .
 COPY worker_entrypoint.sh .
 
 # Runtime-writable directories used by StorageService, ChunkStorageService,
-# EmbeddingStorageService, VectorStoreService (Chroma) and BM25SearchService.
-# Mounted as volumes in docker-compose so data survives container restarts.
-RUN mkdir -p uploads chunks embeddings vector_db storage/bm25 logs \
+# EmbeddingStorageService, and BM25SearchService. Mounted as volumes in
+# docker-compose so data survives container restarts. Chroma data lives
+# in its own server container now, not here - see docker-compose.yml.
+RUN mkdir -p uploads chunks embeddings storage/bm25 logs \
     && chown -R appuser:appuser /app \
     && chmod +x entrypoint.sh worker_entrypoint.sh
 

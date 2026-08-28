@@ -38,9 +38,16 @@ class Settings(BaseSettings):
 
     # =====================================================
     # Vector Database
+    #
+    # Chroma runs as its own server (docker-compose's "chroma" service),
+    # not as an embedded PersistentClient - the app and worker are
+    # separate processes, and Chroma's embedded storage isn't designed
+    # for concurrent access from more than one process at a time (this
+    # was the root cause of intermittent "Error finding id" failures).
     # =====================================================
 
-    chroma_path: str = "./vector_db"
+    chroma_host: str = "localhost"
+    chroma_port: int = 8001
 
     # =====================================================
     # LLM

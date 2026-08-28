@@ -1,28 +1,22 @@
-from pathlib import Path
-
-import chromadb
-
-from app.core.config import settings
 from app.core.logger import logger
 from app.models.chunk import DocumentChunk
 from app.models.embedding import DocumentEmbedding
+from app.services.chroma_client import ChromaClient
 
 
 class VectorStoreService:
 
     def __init__(self):
 
-        db_path = Path(settings.chroma_path)
-
-        db_path.mkdir(parents=True, exist_ok=True)
-
-        self.client = chromadb.PersistentClient(path=str(db_path))
+        # Reuses one client per process (see ChromaClient) instead of
+        # opening a new connection on every instantiation - this class
+        # is constructed per-request/per-document, not once at startup.
+        self.client = ChromaClient.get_client()
 
         self.collection = self.client.get_or_create_collection(name="documents")
 
         logger.info(
             f"ChromaDB initialized | "
-            f"Path={db_path} | "
             f"Collection={self.collection.name} | "
             f"Vectors={self.collection.count()}"
         )
