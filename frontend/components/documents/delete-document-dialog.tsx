@@ -45,7 +45,16 @@ export function DeleteDocumentDialog({
         <AlertDialogFooter>
           <AlertDialogCancel render={<Button variant="outline" />}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            render={<Button variant="destructive" disabled={deleteDocument.isPending} />}
+            render={
+              // The default destructive variant is a subtle ~10%-opacity
+              // tint - too low-contrast for the actual confirm action in
+              // this dialog. Solid background makes it unambiguous.
+              <Button
+                variant="destructive"
+                disabled={deleteDocument.isPending}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              />
+            }
             onClick={() => {
               deleteDocument.mutate(documentId, {
                 onSuccess: () => toast.success(`${filename} deleted.`),

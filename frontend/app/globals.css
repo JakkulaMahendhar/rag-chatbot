@@ -129,6 +129,6 @@
     /* Every Tailwind text-* utility is rem-based, so bumping the root
        size scales all text app-wide proportionally (text-sm, text-xs,
        etc. all grow together) instead of hunting down each usage. */
-    font-size: 18px;
+    font-size: 20px;
   }
 }
