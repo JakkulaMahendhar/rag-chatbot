@@ -27,7 +27,14 @@ export function SourceList({ sources }: { sources: SourceReference[] }) {
   // this joins two real API responses, it doesn't invent anything.
   const { data: documents } = useDocuments();
 
-  if (sources.length === 0) return null;
+  // The backend (app/services/reranker.py) now drops anything below
+  // reranker_score_threshold before it ever reaches here, so this
+  // shouldn't normally trigger - kept as a defensive display-layer
+  // filter rather than trusting every source the API happens to send is
+  // actually worth showing Sarah as "based on this."
+  const relevantSources = sources.filter((source) => relevancePercent(source) !== 0);
+
+  if (relevantSources.length === 0) return null;
 
   const displayName = (source: SourceReference) =>
     documents?.find((doc) => String(doc.id) === source.document_id)?.filename ||
@@ -37,9 +44,9 @@ export function SourceList({ sources }: { sources: SourceReference[] }) {
   return (
     <div className="mt-3 space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">
-        Based on {sources.length} source{sources.length === 1 ? "" : "s"}
+        Based on {relevantSources.length} source{relevantSources.length === 1 ? "" : "s"}
       </p>
-      {sources.map((source) => {
+      {relevantSources.map((source) => {
         const isExpanded = expandedId === source.chunk_id;
         const relevance = relevancePercent(source);
 
