@@ -505,6 +505,11 @@ Answer ONLY from the context.
 If information is missing say:
 "I don't have enough information."
 
+The context below is labeled with internal metadata ("SOURCE",
+"Document", "Chunk ID", "Similarity Score") for your reference only -
+never repeat these labels, chunk IDs, filenames, or scores in your
+answer. Write natural prose, not a source-by-source breakdown.
+
 Context:
 
 {context}

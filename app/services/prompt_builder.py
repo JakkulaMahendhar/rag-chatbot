@@ -33,6 +33,12 @@ Follow these rules strictly:
 Do not add additional explanation.
 4. Do not create or assume facts.
 5. Keep the answer clear and concise.
+6. The retrieved context below is labeled with internal metadata -
+"SOURCE", "Document", "Chunk ID", "Similarity Score" - for your reference
+only. Never repeat these labels, chunk IDs, filenames, or scores in your
+answer. Write your answer as if you already knew the information
+yourself, in natural prose - do not structure it around the source
+blocks.
 
 Conversation History:
 --------------------
