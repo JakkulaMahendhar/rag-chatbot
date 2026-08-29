@@ -51,6 +51,7 @@ class Reranker:
 | Class / library | What it does | Why we used it | How it compares to the alternative |
 |---|---|---|---|
 | `CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")` | Looks at Sarah's question *and* a candidate chunk together, jointly, and scores how relevant that specific pairing is | Far more accurate than comparing two independently-computed vectors, because the model actually reads the question and the chunk side by side | Too slow to run against every chunk in a large document set — which is exactly why hybrid search (above) narrows thousands of chunks down to ~10 candidates first, and only those 10 get this more expensive, more precise pass |
+| `AIServiceRegistry.get_reranker()` | Loads the `CrossEncoder` once per process and hands the same instance to every chat request | The cross-encoder is loaded from disk exactly like the embedding model (Sprint 5) — reusing the same singleton pattern means Sarah's second and third questions don't each pay a multi-second model-load cost | `RAGChatService` originally called `Reranker()` directly on every request, reloading the model from disk every time; this was found and fixed after real timing logs showed several extra seconds on every single chat message — see [Sprint 5](05-embeddings-and-ai-registry.md) for the fix and [the bugs doc](14-bugs-and-lessons-learned.md) for the measured before/after |
 
 This two-stage pattern — fast broad retrieval, then a slower precise
 re-score of just the finalists — is a standard information-retrieval
@@ -106,6 +107,34 @@ being told something false about her own leave policy.
 | `SourceBuilder` | Converts raw retrieval results into `SourceReference` objects (`document_id`, `chunk_id`, `filename`, `content`, `score`) returned alongside the answer | Lets Sarah's chat UI show *"Answered using: Employee_Leave_Policy.pdf"* instead of an answer with no traceable source | Returning only the generated text with no source reference would make it impossible for Sarah to verify the answer against her own document |
 | `ContextWindowManager` | Deduplicates overlapping chunks and stays under a token budget (`max_context_tokens=4000`) before building the LLM prompt | LLMs have a finite context window; naively stuffing every retrieved chunk into the prompt could exceed it or waste tokens on redundant, overlapping text | — |
 
+## 6. Search Evaluation — grading the answer, not just generating it
+
+**File:** `app/services/search_evaluator.py`
+
+```python
+class SearchEvaluator:
+    @staticmethod
+    def evaluate(question, sources):
+        scores = [s.score for s in sources if s.score is not None]
+        best_score = max(scores)
+        if best_score >= 0.7:
+            quality = "Excellent"
+        elif best_score >= 0.5:
+            quality = "Good"
+        else:
+            quality = "Weak"
+        return {"question": question, "best_score": best_score, "quality": quality, ...}
+```
+
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| `SearchEvaluator.evaluate()` | Grades the best-matched source's similarity score into a plain label — `Excellent` (≥0.7), `Good` (≥0.5), or `Weak` (below that) | Sarah has no way to judge, from the generated sentence alone, whether the answer came from a strong match in her document or a weak, borderline one — this turns the raw score into something she can glance at instantly | A raw number like `0.765` means nothing without context; a fixed label with clear thresholds is something a non-technical user can trust at a glance |
+
+This was computed and returned by `POST /chat` from the moment this
+sprint was built — but wasn't read by anything for a while. The frontend
+(Sprint 13) later added `AnswerQualityBadge`, which is what finally
+displays it to Sarah.
+
 ## How the whole pipeline connects, for Sarah's one question
 
 Question → embed → hybrid search (vector + BM25) finds chunk `"14-1"` as
@@ -113,5 +142,6 @@ the top candidate → reranker confirms it's the most relevant of the
 shortlist → `ContextWindowManager` builds a clean prompt → Gemini generates
 *"You are entitled to 12 paid sick leaves per year, accrued at 1 per
 month"* → the hallucination guard checks that claim against chunk `"14-1"`
-and confirms it's grounded → `SourceBuilder` attaches the source → the
-answer and its source are returned to Sarah.
+and confirms it's grounded → `SourceBuilder` attaches the source →
+`SearchEvaluator` grades the match (`0.765` → `"Excellent"`) → the answer,
+its source, and its quality label are all returned to Sarah together.

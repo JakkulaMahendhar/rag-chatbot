@@ -33,7 +33,8 @@ class EmbeddingService:
 
 **File:** `app/core/ai_registry.py` — loads the embedding model once and
 reuses it for every chunk and every question, instead of reloading it
-every time.
+every time. It caches three things this way: the embedding model, the LLM
+client, and (see Sprint 9) the reranker's cross-encoder model.
 
 ## Classes & libraries used, and why
 
@@ -71,6 +72,7 @@ Chat msg 2 → load model                          reuses it
 ```python
 class AIServiceRegistry:
     _embedding_model = None
+    _reranker = None
 
     @classmethod
     def get_embedding_model(cls):
@@ -78,9 +80,34 @@ class AIServiceRegistry:
             from sentence_transformers import SentenceTransformer
             cls._embedding_model = SentenceTransformer(settings.embedding_model)
         return cls._embedding_model
+
+    @classmethod
+    def get_reranker(cls):
+        if cls._reranker is None:
+            from app.services.reranker import Reranker
+            cls._reranker = Reranker()
+        return cls._reranker
 ```
 
 The model loads exactly once per process, the first time anyone needs it —
 whether that's embedding Sarah's uploaded chunk, or later embedding her
 typed question — and every call after that reuses the same in-memory
 model.
+
+## A real bug this exact pattern fixed, found after going live
+
+`get_reranker()` wasn't part of the registry when Sprint 9's reranker
+(the cross-encoder that re-scores search results) was first built —
+`RAGChatService` called `Reranker()` directly instead, which reloaded the
+cross-encoder model from disk on **every single `/chat` request**. This
+went unnoticed until Sarah's actual chat responses were timed: log
+timestamps showed `Initializing RAGChatService` to `Reranker initialized`
+consistently taking several extra seconds on every message, warm or not —
+exactly the cost this file's own singleton pattern was built to avoid for
+the embedding model. Adding `get_reranker()` above and pointing
+`RAGChatService` at it fixed it: a warm chat request that took ~14 seconds
+dropped to ~2.9 seconds. See
+[09-rag-pipeline-and-hybrid-search.md](09-rag-pipeline-and-hybrid-search.md)
+for where the reranker is actually used, and
+[14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) for the
+full timing evidence.

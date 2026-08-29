@@ -49,6 +49,7 @@ frontend/
 | `hooks/use-document-filename.ts` | Joins a chat answer's source reference back to the real document list to show the real filename | Chunk metadata (Sprint 4) stores the on-disk UUID storage name, not the name Sarah gave the file — this hook cross-references `document_id` against the documents list (which does have the real name, from Postgres, Sprint 10) | Displaying the raw metadata filename directly would show Sarah a meaningless UUID like `a36ae1fc-...pdf` instead of `Employee_Leave_Policy.pdf` |
 | **Base UI** (via shadcn/ui, not Radix) | The underlying primitive library behind every dropdown, dialog, and menu component | shadcn/ui's generator produced components built on this; its composition API uses a `render` prop instead of Radix's more commonly documented `asChild` | Once discovered, every trigger-wrapping component was written consistently against Base UI's actual API rather than assuming Radix conventions from other tutorials |
 | `output: "export"` (Next.js static export) | Builds the frontend as plain static HTML/CSS/JS with no Node server required | This app has zero server-only features — no API routes, no server actions, no `next/image`, no dynamic route params — confirmed by checking for all of them before choosing this | A standard Next.js server deployment would need a running Node process purely to serve pages that don't actually need server-side rendering, at real ongoing hosting cost |
+| `AnswerQualityBadge` (`components/chat/answer-quality-badge.tsx`) | Renders the backend's `search_evaluation.quality` label (`Excellent`/`Good`/`Weak`) as a colored badge next to each answer, with the match percentage | The backend (Sprint 9's `SearchEvaluator`) had graded every answer's source match since it was built, but no UI ever showed it to Sarah — added after live testing showed there was no way to tell a strong answer from a borderline one at a glance | Showing the raw `best_score` number (e.g. `0.765`) would mean nothing to Sarah without context; the color-coded label with a percentage reads instantly |
 
 ## How it works — Sarah's session, end to end
 
@@ -66,7 +67,11 @@ frontend/
    Employee_Leave_Policy.pdf"* with a relevance score — computed with the
    same `1 / (1 + distance)` formula the backend itself uses (Sprint 9),
    reused rather than reinvented, so the number Sarah sees matches what
-   the backend actually calculated.
+   the backend actually calculated. Right next to the answer,
+   `AnswerQualityBadge` shows **"✓ Excellent match · 78%"** in green,
+   reading `search_evaluation.quality` and `.best_score` straight from the
+   same `/chat` response — verified live during testing with this exact
+   question and document.
 6. If Sarah had instead asked something the document doesn't cover, the
    hallucination guard's *"I don't have enough information"* response
    (Sprint 9) renders the same way any other answer does — the UI doesn't
