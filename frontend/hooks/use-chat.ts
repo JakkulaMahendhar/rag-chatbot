@@ -11,6 +11,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceReference[];
+  quality?: string;
+  bestScore?: number;
   error?: string;
 }
 
@@ -45,6 +47,8 @@ export function useChat() {
             role: "assistant",
             content: response.answer,
             sources: response.sources,
+            quality: response.search_evaluation?.quality,
+            bestScore: response.search_evaluation?.best_score,
           },
         ]);
       } catch (error) {

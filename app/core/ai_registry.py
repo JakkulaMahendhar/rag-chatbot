@@ -13,6 +13,7 @@ class AIServiceRegistry:
 
     _embedding_model = None
     _llm = None
+    _reranker = None
 
 
     @classmethod
@@ -62,3 +63,18 @@ class AIServiceRegistry:
 
 
         return cls._llm
+
+
+    @classmethod
+    def get_reranker(cls):
+
+        if cls._reranker is None:
+
+            # Deferred import: see get_embedding_model() above for why.
+            from app.services.reranker import Reranker
+
+            print("Loading cross-encoder reranker: cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+            cls._reranker = Reranker()
+
+        return cls._reranker

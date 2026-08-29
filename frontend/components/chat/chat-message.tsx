@@ -7,6 +7,7 @@ import { AlertTriangle, Check, Copy, Sparkles, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { AnswerQualityBadge } from "@/components/chat/answer-quality-badge";
 import { SourceList } from "@/components/chat/source-list";
 import type { ChatMessage as ChatMessageType } from "@/hooks/use-chat";
 
@@ -55,10 +56,11 @@ export function ChatMessage({ message }: { message: ChatMessageType }) {
         )}
 
         {!isUser && !message.error && (
-          <div className="mt-1 flex items-center gap-1">
+          <div className="mt-1 flex items-center gap-2">
             <Button variant="ghost" size="icon-xs" onClick={handleCopy} aria-label="Copy response">
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
             </Button>
+            <AnswerQualityBadge quality={message.quality} bestScore={message.bestScore} />
           </div>
         )}
 

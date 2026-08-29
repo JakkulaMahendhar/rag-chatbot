@@ -30,8 +30,6 @@ from app.services.query_enhancer import QueryEnhancer
 from app.services.query_expander import QueryExpander
 from app.services.query_access import QueryAccessService
 
-from app.services.reranker import Reranker
-
 
 class RAGChatService:
 
@@ -67,7 +65,7 @@ class RAGChatService:
         # Cross Encoder
         # -----------------------------------
 
-        self.reranker = Reranker()
+        self.reranker = AIServiceRegistry.get_reranker()
 
         logger.info("Reranker initialized")
 
