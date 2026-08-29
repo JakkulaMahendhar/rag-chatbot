@@ -35,6 +35,182 @@ The objective is to build a complete enterprise-grade AI knowledge assistant sim
 
 ---
 
+# ⚡ Getting Started
+
+Everything you need to clone this repo and have it running locally —
+backend, frontend, database, vector store, and worker — with exact
+commands. This is the current, accurate setup guide; treat the
+sprint-by-sprint sections further down as history, not instructions.
+
+## Prerequisites
+
+| Tool | Needed for | Get it |
+|---|---|---|
+| **Git** | Cloning the repo | — |
+| **Docker Desktop** | Running Postgres + ChromaDB + backend + worker with one command (recommended path) | https://www.docker.com/products/docker-desktop |
+| **Python 3.11+** | Only if running the backend *outside* Docker | https://www.python.org/downloads |
+| **Node.js 20+ and npm** | The frontend | https://nodejs.org |
+| **Ollama** (optional) | The default local LLM — skip this if you'll use Gemini instead | https://ollama.com |
+
+## 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd rag-chatbot
+```
+
+## 2. Configure environment variables
+
+```bash
+cp .env.example .env
+cp frontend/.env.example frontend/.env.local
+```
+
+Then open `.env` and fill in what's actually required — everything else
+already has a sensible default (see the full comments in `.env.example`):
+
+| Variable | Required? | What it's for |
+|---|---|---|
+| `JWT_SECRET_KEY` | **Yes** | Generate one: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `DATABASE_URL` / `DATABASE_URL_SYNC` | No, if using Docker Compose | The default values already match the `db` service below |
+| `LLM_PROVIDER` | No | Defaults to `ollama` (local, free). Set to `gemini` to use Google's API instead |
+| `GEMINI_API_KEY` | Only if `LLM_PROVIDER=gemini` | Free key at https://aistudio.google.com/apikey — free tier is capped at 20 requests/day |
+
+`frontend/.env.local` only needs `NEXT_PUBLIC_API_URL` — the example
+already points it at `http://localhost:8000`, correct for local dev.
+
+## 3. (Optional) Install Ollama — skip if using Gemini
+
+```bash
+brew install ollama        # macOS; see ollama.com for other platforms
+ollama pull llama3.1
+```
+
+Ollama needs to be running on your **host machine** (not in Docker) —
+the backend container reaches it automatically via
+`host.docker.internal`, already configured in `docker-compose.yml`.
+
+## 4. Start the backend (Postgres + ChromaDB + API + worker)
+
+```bash
+docker compose up -d --build
+```
+
+This builds the image, runs database migrations automatically
+(`entrypoint.sh`), and starts four containers:
+
+| Service | Address | What it is |
+|---|---|---|
+| `app` | http://localhost:8000 | FastAPI backend — Swagger docs at `/docs` |
+| `worker` | *(no exposed port)* | Background document processing |
+| `db` | localhost:5432 | PostgreSQL |
+| `chroma` | localhost:8001 | Vector database server |
+
+Check everything came up healthy:
+
+```bash
+docker compose ps
+```
+
+## 5. Start the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:3000** — register an account, upload a
+document, and start chatting.
+
+## 6. Or skip the UI and try the API directly
+
+```bash
+# Register
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"YourPass123!"}'
+
+# Log in (copy access_token from the response)
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"YourPass123!"}'
+
+# Upload a document
+curl -X POST http://localhost:8000/upload \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "file=@your-document.pdf"
+
+# Ask a question about it
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"question":"What does this document say?"}'
+```
+
+## Running the test suite
+
+```bash
+pytest -v \
+  --ignore=tests/test_gemini.py \
+  --ignore=tests/test_settings.py \
+  --ignore=tests/test_bm25.py \
+  --ignore=tests/test_chunker.py \
+  --ignore=tests/test_embedding.py \
+  --ignore=tests/test_retrieval.py \
+  --ignore=tests/test_vector_stats.py \
+  --ignore=tests/test_connections.py \
+  --ignore=tests/test_llm.py
+```
+
+This is exactly what CI runs (`.github/workflows/ci.yml`) — the
+excluded files are documented pre-existing failures, explained inline
+in that workflow.
+
+## Stopping / resetting
+
+```bash
+docker compose down       # stop containers, keep all data
+docker compose down -v    # stop containers AND wipe all data - fresh start
+```
+
+## Running the backend without Docker (native/manual dev)
+
+Only needed if you specifically don't want Docker for the backend —
+Docker Compose (step 4) is the supported, tested path.
+
+```bash
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# You still need a running Postgres and a running Chroma server -
+# either point .env at existing ones, or start just those two services:
+#   docker compose up -d db chroma
+
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+## Quick command reference
+
+| Task | Command |
+|---|---|
+| Start everything (backend) | `docker compose up -d --build` |
+| Stop everything, keep data | `docker compose down` |
+| Stop everything, wipe data | `docker compose down -v` |
+| View backend logs | `docker compose logs app -f` |
+| View worker logs | `docker compose logs worker -f` |
+| Run backend tests | `pytest -v --ignore=...` (full command above) |
+| Start frontend dev server | `cd frontend && npm run dev` |
+| Build frontend for production | `cd frontend && npm run build` |
+| Lint frontend | `cd frontend && npm run lint` |
+| Run DB migrations manually | `alembic upgrade head` |
+| Generate a JWT secret | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| Full pipeline smoke test | `bash scripts/check_pipeline.sh` |
+
+---
+
 # 🚀 Project Vision
 
 Large Language Models (LLMs) do not have access to private organizational data.
@@ -673,165 +849,13 @@ rag-chatbot
 
 ---
 
-# ⚙️ Local Setup
-
-
-## Requirements
-
-
-- Python 3.11+
-- Git
-- VS Code
-
-
----
-
-## Clone Repository
-
-
-```bash
-git clone <repository-url>
-
-cd rag-chatbot
-```
-
-
----
-
-## Create Virtual Environment
-
-
-```bash
-python -m venv venv
-```
-
-
-Activate:
-
-
-### macOS/Linux
-
-```bash
-source venv/bin/activate
-```
-
-
-### Windows
-
-```bash
-venv\Scripts\activate
-```
-
-
----
-
-## Install Dependencies
-
-
-```bash
-pip install --upgrade pip
-
-pip install -r requirements.txt
-```
-
----
-
-# Environment Configuration
-
-
-Create:
-
-
-```
-.env
-```
-
-
-Example:
-
-
-```env
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-CHUNK_SIZE=1000
-
-CHUNK_OVERLAP=200
-```
-
----
-
-# ▶️ Run Application
-
-
-```bash
-uvicorn app.main:app --reload
-```
-
-
-Server:
-
-```
-http://localhost:8000
-```
-
-
-Swagger:
-
-```
-http://localhost:8000/docs
-```
-
----
-
-# 📡 API Example
-
-
-## Upload Document
-
-
-Endpoint:
-
-
-```
-POST /upload
-```
-
-
-Response:
-
-
-```json
-{
- "filename":"document.pdf",
- "document_id":"uuid",
- "size":33302,
- "extracted_characters":666,
- "total_chunks":1,
- "total_embeddings":1,
- "message":"File uploaded successfully"
-}
-```
-
----
-
-# 🧪 Testing
-
-
-Run:
-
-
-```bash
-pytest
-```
-
-
-Testing covers:
-
-- Parser services
-- Chunking services
-- Embedding generation
-- AI registry
-
+# ⚙️ Local Setup, Running, and Testing
+
+This was written during Sprint 1, before Postgres, ChromaDB, Docker
+Compose, the worker, auth, or the frontend existed — it's kept here as
+history, not instructions. **See [⚡ Getting Started](#getting-started)
+at the top of this file for the current, accurate setup guide, exact
+commands, and full environment variable list.**
 
 ---
 
@@ -1072,18 +1096,9 @@ gate every change with an automated test run.
 
 ## Running Locally with Docker
 
-```bash
-cp .env.example .env
-# fill in JWT_SECRET_KEY, GEMINI_API_KEY (if using Gemini), etc.
-
-docker compose up --build
-```
-
-The API will be available at `http://localhost:8000`.
-
-If `LLM_PROVIDER=ollama`, run Ollama on the host machine - the
-container reaches it via `OLLAMA_HOST=http://host.docker.internal:11434`,
-already configured in `docker-compose.yml`.
+See [⚡ Getting Started](#getting-started) at the top of this file —
+same commands, kept in one place so they don't drift out of sync with
+each other.
 
 ## Known Limitations
 
