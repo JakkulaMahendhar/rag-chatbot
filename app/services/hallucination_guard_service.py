@@ -55,8 +55,20 @@ Return:
 
         import json
 
+        cleaned = response.strip()
+
+        # Gemini (and other models) frequently wrap "return only JSON"
+        # answers in a markdown code fence anyway - e.g. "```json\n{...}\n```".
+        # json.loads() rejects that outright, which meant every Gemini
+        # answer fell through to the except branch below and was reported
+        # as "not grounded", forcing an unnecessary regeneration on every
+        # single message. QueryExpander (app/services/query_expander.py)
+        # already strips this same fence - mirrored here.
+        if cleaned.startswith("```"):
+            cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+
         try:
-            return json.loads(response)
+            return json.loads(cleaned)
 
         except Exception:
 

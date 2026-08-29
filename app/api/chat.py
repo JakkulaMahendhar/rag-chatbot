@@ -1,6 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from google.api_core.exceptions import GoogleAPIError
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,8 +62,23 @@ async def chat(
 
         raise HTTPException(status_code=400, detail=str(error))
 
-    return await service.chat(
-        question=request.question,
-        conversation_id=request.conversation_id,
-        user_id=current_user.id,
-    )
+    try:
+
+        return await service.chat(
+            question=request.question,
+            conversation_id=request.conversation_id,
+            user_id=current_user.id,
+        )
+
+    except GoogleAPIError as error:
+
+        # Covers quota/rate-limit errors (e.g. the free tier's 20
+        # requests/day cap), auth failures, and other Gemini-side
+        # failures - surfaces as a clean, actionable message instead of
+        # a bare 500. Deliberately narrow: anything that isn't a Gemini
+        # API error (a real bug in our own code, a DB error, ...) is left
+        # to raise and surface as a normal 500, unmasked.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Gemini API error: {error.message}",
+        )
