@@ -21,8 +21,17 @@ jobs:
       shas: ${{ steps.list.outputs.shas }}
     steps:
       - id: list
+        env:
+          # Passed via env, not interpolated directly into the script:
+          # commit messages/author names are attacker-controllable text,
+          # and a literal `'` in one (e.g. "fix(ci): ..." after a
+          # message containing an apostrophe) would break out of the
+          # single-quoted string below and execute as raw shell - this
+          # is GitHub's own documented script-injection anti-pattern,
+          # and is exactly what caused the very syntax error this fixes.
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
         run: |
-          echo '${{ toJson(github.event.commits) }}' | jq -c '[.[].id]' > shas.json
+          echo "$COMMITS_JSON" | jq -c '[.[].id]' > shas.json
           echo "shas=$(cat shas.json)" >> "$GITHUB_OUTPUT"
           echo "Commits in this push:"
           cat shas.json
