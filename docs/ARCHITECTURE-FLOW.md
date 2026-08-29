@@ -128,7 +128,7 @@ information" instead of guessing.
 | Concern | Component |
 |---|---|
 | Structured data (users, documents, status) | PostgreSQL |
-| Vectors (semantic search) | ChromaDB (its own server, HTTP) |
+| Vectors (semantic search) | ChromaDB (its own server, HTTP), persisted to a Docker volume mounted at `/chroma/chroma` — the container is started with `--path /chroma/chroma` explicitly, since the image's own default (`/data`) doesn't match |
 | Keyword index | BM25, in-process |
 | Conversation history | In-memory only (not persisted) |
 | LLM provider | Gemini (cloud) or Ollama (local) — chosen per-request; server default set by one config value, overridable per request from the frontend's Settings page |

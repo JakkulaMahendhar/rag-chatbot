@@ -69,3 +69,48 @@ Results come back ranked by **distance** (lower = closer, i.e. more
 similar) — not a 0–100% score. That distance value is converted into
 something human-readable for display in Sprint 9 and reused as-is by the
 frontend in Sprint 13, so it's only ever calculated in one place.
+
+## A real bug: the Docker volume was never actually being used
+
+`docker-compose.yml` mounts a named volume at `/chroma/chroma`, meant to
+keep every uploaded document's vectors around across restarts. It looked
+correct, `docker compose down`/`up` never complained, and searches worked
+fine — right up until retrieval quality quietly degraded (weak match
+scores, and the hallucination guard genuinely triggering on questions
+that used to answer fine). Inspecting the collection directly
+(`scripts/inspect_chroma.py`) showed **1 total vector**, when it should
+have had hundreds.
+
+The actual cause, found by reading the chroma container's own startup
+log: `persist_path: "/data"`. The `chromadb/chroma:1.5.9` image ships a
+config file baked in at `/config.yaml` that hardcodes `/data` as where it
+saves data — a completely different path from `/chroma/chroma`, which is
+where the volume was mounted. Chroma had been writing every vector to the
+container's own disposable filesystem layer this entire time; the volume
+mount was a no-op. Every time the container got recreated — any
+`docker compose down`/`up`, any `--build` — all vector data was silently
+thrown away, while Postgres (mounted correctly) kept everything. Postgres
+still listed old documents as `status: "completed"`; their actual
+retrievable content was gone.
+
+**The fix:** `chroma run` refuses to combine its config-file argument with
+`--path`/`--host` flags (confirmed directly against the image — it errors
+out immediately), so the config file is dropped entirely in favor of
+explicit flags that match where the volume actually is:
+
+```yaml
+# docker-compose.yml
+command: ["run", "--path", "/chroma/chroma", "--host", "0.0.0.0"]
+```
+
+**Verified properly, not just with a restart:** a plain container
+*restart* would have looked fine even under the old broken setup, since
+the same container's disposable layer survives a restart — that's not a
+real test. The real test is a full recreation: uploaded a document,
+ran `docker compose up -d --force-recreate chroma`, and confirmed the
+chunk count survived. It did.
+
+**Real-world consequence:** any document uploaded before this fix has a
+Postgres row saying `"completed"` but no actual content left in Chroma —
+those documents need to be deleted and re-uploaded; there's nothing to
+recover.

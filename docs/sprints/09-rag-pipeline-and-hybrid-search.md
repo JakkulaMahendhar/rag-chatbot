@@ -121,12 +121,33 @@ log `{'grounded': False, ...}` on every Gemini call now correctly logs
 
 ## 5. Source Citations & Context Window Management
 
-**Files:** `app/services/source_builder.py`, `app/services/context_window_manager.py`
+**Files:** `app/services/source_builder.py`, `app/services/context_window_manager.py`, `app/services/context_formatter.py`, `app/services/prompt_builder.py`
 
 | Class / library | What it does | Why we used it | How it compares to the alternative |
 |---|---|---|---|
 | `SourceBuilder` | Converts raw retrieval results into `SourceReference` objects (`document_id`, `chunk_id`, `filename`, `content`, `score`) returned alongside the answer | Lets Sarah's chat UI show *"Answered using: Employee_Leave_Policy.pdf"* instead of an answer with no traceable source | Returning only the generated text with no source reference would make it impossible for Sarah to verify the answer against her own document |
 | `ContextWindowManager` | Deduplicates overlapping chunks and stays under a token budget (`max_context_tokens=4000`) before building the LLM prompt | LLMs have a finite context window; naively stuffing every retrieved chunk into the prompt could exceed it or waste tokens on redundant, overlapping text | — |
+| `ContextFormatter` | Turns the retrieved chunks into a labeled block of text — `SOURCE 1 / Document: ... / Chunk ID: ... / Similarity Score: ... / Content: ...` — for the LLM to read | Gives the LLM a clear, structured view of *where* each piece of context came from, which helps it judge relevance and avoid blending unrelated chunks | Concatenating raw chunk text with no structure makes it harder for the model to tell where one source ends and another begins |
+| `PromptBuilder` | Assembles the final prompt: system instructions, conversation history, the formatted context, and the question | One place that defines exactly what the LLM sees and is told to do, rather than string-building scattered across the codebase | — |
+
+### A real bug: the LLM was echoing the internal SOURCE/Chunk ID labels back into its answer
+
+`ContextFormatter`'s labels (`SOURCE 1`, `Chunk ID: 6-6`, `Similarity
+Score: 0.72`) are meant purely for the LLM's own internal reference — they
+were never supposed to appear in the text Sarah actually reads. But
+`PromptBuilder`'s original rules never said that. Asked a broad question
+like *"Explain about Machine Learning and those important concepts,"*
+Ollama's `llama3.1` (less strict than Gemini about subtle formatting
+instructions) sometimes just copied the labels straight into its answer:
+*"Machine learning ... (Source 2, Chunk ID: 6-6, Content: 1.1 What Is
+Machine Learning?)"* — reading like a raw context dump instead of a
+written answer. Added an explicit rule to both `PromptBuilder` and the
+hallucination guard's strict regeneration prompt: the labels are for
+reference only, never to be repeated — Sarah already sees real source
+attribution separately, via `SourceBuilder` and the frontend's
+`AnswerQualityBadge` (Sprint 13), so the LLM never needed to reproduce it
+inline. Verified against the same broad question afterward: clean prose,
+no label leakage.
 
 ## 6. Search Evaluation — grading the answer, not just generating it
 
