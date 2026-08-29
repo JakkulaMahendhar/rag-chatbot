@@ -105,8 +105,8 @@ and **answering a question**. Detailed per-sprint reasoning lives in
 | 3 | Hybrid search | `HybridSearchService` (vector + `rank-bm25`) | Vector catches paraphrases, BM25 catches exact keywords; combined, weighted 0.6/0.4 |
 | 4 | Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores the shortlist by reading question+chunk together — more accurate than step 3 alone, too slow to run on everything |
 | 5 | Context management | `ContextWindowManager` | Dedupes overlapping chunks, stays under the LLM's token budget |
-| 6 | Generation | `GeminiService` / `OllamaService` (via `AIServiceRegistry.get_llm(provider)`) | Writes the actual answer; which provider runs is chosen per-request (frontend Settings toggle), not fixed per server |
-| 7 | Hallucination guard | `HallucinationGuardService` | A second LLM call checks the answer is actually supported by the context; regenerates with a stricter prompt if not |
+| 6 | Generation | `GeminiService` / `OllamaService` (via `AIServiceRegistry.get_llm(provider)`) | Writes the actual answer; which provider runs is chosen per-request (frontend Settings toggle), not fixed per server. Gemini errors (quota, auth) surface as a clean 503, not a raw crash |
+| 7 | Hallucination guard | `HallucinationGuardService` | A second LLM call checks the answer is actually supported by the context; regenerates with a stricter prompt if not. Strips markdown fences before parsing — Gemini wraps its JSON even when told not to |
 | 8 | Search evaluation | `SearchEvaluator` | Grades the best match score into Excellent/Good/Weak, shown as a badge in the UI |
 | 9 | Source attribution | `SourceBuilder` | Attaches filename + chunk + score so the answer is traceable back to the real document |
 

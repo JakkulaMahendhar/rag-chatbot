@@ -99,3 +99,34 @@ configured, `AIServiceRegistry.get_llm()` raises a clear error
 (*"Gemini is not configured on this server..."*) which `POST /chat`
 turns into an HTTP 400 — Sarah sees that exact sentence in the chat
 window instead of a stack trace or a silently wrong answer.
+
+## When Gemini itself fails — quota limits, not just misconfiguration
+
+A configured Gemini key can still fail *while answering* — most commonly
+by hitting a quota. Google's free tier caps `gemini-3.6-flash` at **20
+requests per day**, and a single chat message can make up to five Gemini
+calls (query enhancement, query expansion, generate, hallucination-guard
+validate, and — before the fix in Sprint 9 — an almost-always-triggered
+regenerate), so that cap is easy to hit in only a handful of real
+questions.
+
+Before this was handled, an exhausted quota surfaced as a raw, unhandled
+`500` after Google's own client had already spent up to two minutes
+silently retrying with backoff. **File:** `app/api/chat.py` now wraps the
+call to `service.chat()`:
+
+```python
+try:
+    return await service.chat(...)
+except GoogleAPIError as error:
+    raise HTTPException(status_code=503, detail=f"Gemini API error: {error.message}")
+```
+
+This catch is deliberately narrow — only `google.api_core.exceptions.GoogleAPIError`
+(quota limits, auth failures, other Gemini-side errors) is translated into
+a clean message. Anything else (a bug in retrieval, a database error) is
+left alone and still surfaces as a normal `500`, so this doesn't hide
+unrelated problems behind a misleading "Gemini" label. Verified live: a
+quota-exhausted request now returns `503` with Google's own message
+(*"Quota exceeded for metric: ... limit: 20, model: gemini-3.6-flash"*)
+in ~30 seconds, instead of crashing after ~145 seconds.

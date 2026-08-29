@@ -54,16 +54,19 @@ question), not during the original build:
 | 22 | Sarah had no way to tell, from the chat UI, whether an answer came from a strong match in her document or a weak, borderline one | `SearchEvaluator` (Sprint 9) had computed an `Excellent`/`Good`/`Weak` quality label and returned it in every `/chat` response from the start — but no frontend component ever read `search_evaluation` | Added `AnswerQualityBadge`, wired to `response.search_evaluation.quality` and `.best_score`; verified live showing "Excellent match · 78%" on Sarah's sick-leave question | [Sprint 9](09-rag-pipeline-and-hybrid-search.md), [Sprint 13](13-frontend-nextjs.md) |
 | 23 | The very first real Gemini call after adding an API key failed: `google.api_core.exceptions.NotFound: 404 This model models/gemini-2.5-flash is no longer available to new users` | Google deprecated `gemini-2.5-flash` for this API key between when the project started and when Gemini was first actually exercised end-to-end — the config default had never been re-verified against a real call | Google's own error named the replacement directly; updated `GEMINI_MODEL` to `gemini-3.6-flash` in `.env`, `.env.example`, and `Settings.gemini_model`'s default. Re-verified live: same question, `HTTP 200`, correct answer | [Sprint 8](08-llm-integration.md) |
 | 24 | A real Gemini API key ended up typed into `.env.example` (git-tracked) instead of `.env` (git-ignored) while testing the provider toggle | `.env.example` and `.env` look nearly identical and sit next to each other; the key was added to the wrong one by hand | Caught by reviewing `git diff` before staging — moved the key to `.env`, reset `.env.example` back to blank, confirmed with a clean `git diff .env.example` before ever running `git add`. Never reached a commit, so no history rewrite was needed | (process lesson, not a code bug — the same category as bug #9) |
+| 25 | Every real Gemini answer logged `{'grounded': False, 'confidence': 0, 'unsupported_claims': ['Unable to validate response']}` — even answers that were correct — and every Gemini message paid for a needless extra "regenerate" call | `HallucinationGuardService._parse_response()` called `json.loads()` directly on Gemini's response, but Gemini wraps JSON in a ` ```json ` markdown fence even when told not to; the parse always failed and fell through to a hardcoded "ungrounded" default | Strip a leading/trailing ` ``` ` fence before parsing, mirroring the fix `QueryExpander` already had for the same problem in a different file. Verified live: the same question that always logged `grounded: False` now correctly logs `grounded: True, confidence: 1` | [Sprint 9](09-rag-pipeline-and-hybrid-search.md) |
+| 26 | A Gemini chat request that hit a quota limit took ~145 seconds and then returned a bare, unhandled `500 Internal Server Error` | The account's Gemini API key is on the free tier (20 requests/day for `gemini-3.6-flash`); once exceeded, Google's client library retries with backoff internally before finally raising `google.api_core.exceptions.ResourceExhausted`, which `POST /chat` didn't catch | Added a narrow `except GoogleAPIError` around the chat call in `app/api/chat.py`, returning a `503` with Google's own message. Doesn't fix the quota itself (that needs billing or waiting for the daily reset) — but turns a silent, minutes-long hang into an immediate, readable error | [Sprint 8](08-llm-integration.md) |
 
 Also worth updating: with the frontend's AI Model toggle in place (Sprint
 8/13), which provider answers a given question is no longer fixed for the
 whole server — it's chosen per request, defaulting to Ollama. Ollama still
 means local CPU inference, genuinely slower than a cloud call, and the
-hallucination guard (Sprint 9) still doubles that cost with a second LLM
-call to validate every answer — the reranker fix above removes one real,
-avoidable delay regardless of provider; switching to Gemini in Settings
-removes the larger, structural one, at the cost of a per-call API fee
-instead of local compute time.
+hallucination guard (Sprint 9) still makes a second LLM call to validate
+every answer — the reranker fix above removes one real, avoidable delay
+regardless of provider; the JSON-parsing fix (#25) removes another,
+Gemini-specific one. Gemini itself is not necessarily faster in practice:
+on the free tier, its own request quota (#26) is the binding constraint,
+not raw model speed.
 
 ## The single biggest lesson from this project
 

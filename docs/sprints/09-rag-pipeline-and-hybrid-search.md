@@ -98,6 +98,27 @@ LLM calls** (generate → validate → regenerate) — a real cost and latency
 tradeoff made deliberately in exchange for a much lower chance of Sarah
 being told something false about her own leave policy.
 
+### A real bug: Gemini's JSON always failed to parse, so the guard always regenerated
+
+`_parse_response()` originally called `json.loads(response)` directly on
+whatever the validation call returned. Gemini, even when the prompt says
+*"Return only JSON"*, reliably wraps its answer in a markdown code fence —
+` ```json\n{...}\n``` ` — which `json.loads()` rejects outright. That sent
+every single Gemini validation straight into the `except` branch, which
+returns a hardcoded `{"grounded": false, "confidence": 0,
+"unsupported_claims": ["Unable to validate response"]}` — meaning **every
+Gemini answer was reported as ungrounded**, correct or not, and **every
+Gemini chat message paid for a needless regenerate call** it didn't
+actually need. `app/services/query_expander.py`'s `QueryExpander` (used
+earlier in the same request, to generate search-query variations) already
+stripped this exact fence before parsing its own JSON — this file just
+hadn't been given the same fix yet. `_parse_response()` now strips a
+leading/trailing ` ``` ` (and an
+optional `json` language tag) before calling `json.loads()`, mirroring
+`QueryExpander`'s approach. Verified live: the same question that used to
+log `{'grounded': False, ...}` on every Gemini call now correctly logs
+`{'grounded': True, 'confidence': 1, 'unsupported_claims': []}`.
+
 ## 5. Source Citations & Context Window Management
 
 **Files:** `app/services/source_builder.py`, `app/services/context_window_manager.py`
