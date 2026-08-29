@@ -23,6 +23,16 @@ services:
     # "Error finding id" failures when both processes opened it
     # directly. Pinned to match the chromadb version in requirements.txt.
     image: chromadb/chroma:1.5.9
+    # The image's baked-in /config.yaml hardcodes persist_path: "/data" -
+    # NOT the /chroma/chroma path below, which the volume was (silently,
+    # incorrectly) mounted at. Chroma was actually writing to /data, the
+    # container's own ephemeral layer, this whole time - every vector
+    # ever added was lost on every container recreation, even though the
+    # named volume looked correctly attached. `chroma run` explicitly
+    # rejects combining a config file with --path/--host (verified: it
+    # errors out immediately), so the config file is dropped entirely
+    # here in favor of explicit flags matching where the volume actually is.
+    command: ["run", "--path", "/chroma/chroma", "--host", "0.0.0.0"]
     volumes:
       - vector_db_data:/chroma/chroma
     ports:
