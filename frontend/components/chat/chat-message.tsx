@@ -14,6 +14,7 @@ import type { ChatMessage as ChatMessageType } from "@/hooks/use-chat";
 export function ChatMessage({ message }: { message: ChatMessageType }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
+  const isThinking = !isUser && message.isStreaming && !message.content;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -29,7 +30,11 @@ export function ChatMessage({ message }: { message: ChatMessageType }) {
           isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
         )}
       >
-        {isUser ? <User className="size-3.5" /> : <Sparkles className="size-3.5" />}
+        {isUser ? (
+          <User className="size-3.5" />
+        ) : (
+          <Sparkles className={cn("size-3.5", isThinking && "animate-pulse")} />
+        )}
       </div>
 
       <div className={cn("min-w-0 max-w-[85%] flex-1", isUser && "flex flex-col items-end")}>
@@ -47,8 +52,12 @@ export function ChatMessage({ message }: { message: ChatMessageType }) {
           >
             {isUser ? (
               message.content
-            ) : message.isStreaming && !message.content ? (
-              <span className="text-muted-foreground">Thinking...</span>
+            ) : isThinking ? (
+              <span className="inline-flex items-center gap-1 py-0.5">
+                <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-current" />
+              </span>
             ) : (
               <div className="prose-sm max-w-none [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_p:not(:last-child)]:mb-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
