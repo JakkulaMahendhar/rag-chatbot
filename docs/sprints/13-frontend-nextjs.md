@@ -13,9 +13,8 @@ Before writing any UI code, the backend was checked feature-by-feature,
 and the UI was scoped to match reality rather than build screens for
 features that don't exist yet:
 
-| Feature | Why it wasn't built |
+| Feature | Why it wasn't built (at the time) |
 |---|---|
-| Chat streaming | `POST /chat` (Sprint 8/9) is a single blocking response — there's no SSE or WebSocket endpoint to stream from |
 | Chat history list | Conversation storage (Sprint 9) is in-memory only, with no endpoint to list past conversations |
 | Collections / knowledge-bases | No such grouping exists anywhere in the document schema |
 | Dashboard analytics | No aggregation endpoints exist on the backend |
@@ -24,6 +23,12 @@ features that don't exist yet:
 Building UI for any of these would mean either an empty "coming soon"
 shell or, worse, silently fabricated data — the scope was matched to what
 the backend genuinely supports instead.
+
+Chat streaming was in this table too, originally — `POST /chat` was a
+single blocking response with nothing to stream from. It was revisited
+later once the backend grew a `POST /chat/stream` endpoint (Sprint 9);
+see below for what actually got built and why it's not real token-level
+LLM streaming.
 
 ## What we built
 
@@ -51,6 +56,9 @@ frontend/
 | `output: "export"` (Next.js static export) | Builds the frontend as plain static HTML/CSS/JS with no Node server required | This app has zero server-only features — no API routes, no server actions, no `next/image`, no dynamic route params — confirmed by checking for all of them before choosing this | A standard Next.js server deployment would need a running Node process purely to serve pages that don't actually need server-side rendering, at real ongoing hosting cost |
 | `AnswerQualityBadge` (`components/chat/answer-quality-badge.tsx`) | Renders the backend's `search_evaluation.quality` label (`Excellent`/`Good`/`Weak`) as a colored badge next to each answer, with the match percentage | The backend (Sprint 9's `SearchEvaluator`) had graded every answer's source match since it was built, but no UI ever showed it to Sarah — added after live testing showed there was no way to tell a strong answer from a borderline one at a glance | Showing the raw `best_score` number (e.g. `0.765`) would mean nothing to Sarah without context; the color-coded label with a percentage reads instantly |
 | `llmProviderStorage` (`lib/llm-provider.ts`) + `useLlmProvider` hook | Reads/writes Sarah's Ollama-vs-Gemini choice in `localStorage`, and a Settings page card to change it | Sprint 8's `/chat` endpoint accepts a per-request `llm_provider` field, but something has to decide what to send — this is the UI for that decision, saved the same way the auth token already is | A dropdown re-fetched from the server on every page load would need a new API call and a place to store the preference server-side; `localStorage` is enough for a per-browser convenience like this one |
+| `apiClient.stream()` (`lib/api/client.ts`) | Reads `POST /chat/stream`'s Server-Sent Events using plain `fetch()` + `response.body.getReader()`, parsing each `data: ...` frame as it arrives | The browser's built-in `EventSource` only supports GET requests with no custom headers — this app authenticates every request with an `Authorization: Bearer <token>` header, which `EventSource` has no way to send | Switching the whole app to cookie-based auth just to use `EventSource` would be a much bigger change for one endpoint; a small hand-rolled SSE reader on top of the same `fetch()` client already used everywhere else was the smaller, more consistent option |
+| `useChat`'s streaming state | Pushes an empty assistant message onto state immediately, then appends each incoming word to that message's `content` as chunks arrive, instead of one `setState` after an `await` | This is what actually makes the answer appear progressively — the network layer alone doesn't do this; something has to turn "a stream of chunks" into "a message that grows" | The alternative — buffer every chunk and set state once at the end — would defeat the entire point of streaming, back to a single pop-in |
+| Blinking cursor (`chat-message.tsx`) | A small `animate-pulse` block rendered after the answer text while `message.isStreaming` is true | Gives Sarah a visual cue that more text is still coming, the same convention most chat UIs use | Without it, a short pause between words could look like the answer had already finished |
 
 **Settings page — AI Model card:** two buttons, Ollama (default,
 highlighted) and Gemini, styled identically to the existing Appearance
@@ -67,18 +75,22 @@ mid-conversation without reloading the page.
    finishes and it flips to `"completed"`.
 3. She opens the Chat page and types *"How many sick leaves do I get per
    year?"*
-4. The request goes to `POST /chat`, and the full RAG pipeline (Sprints
-   6–9) runs; the answer *"You are entitled to 12 paid sick leaves per
-   year, accrued at 1 per month"* comes back along with its source.
-5. The chat UI renders the answer and, underneath it, *"Answered using:
+4. The request goes to `POST /chat/stream`, and the full RAG pipeline
+   (Sprints 6–9) — including the hallucination guard — runs to completion
+   exactly as it would for `POST /chat`. Once it's done deciding the final
+   answer is *"You are entitled to 12 paid sick leaves per year, accrued
+   at 1 per month,"* the chat UI reveals it to Sarah a word at a time
+   instead of popping in all at once, with a blinking cursor after the
+   last revealed word.
+5. Once the reveal finishes, the chat UI shows, underneath the answer, *"Answered using:
    Employee_Leave_Policy.pdf"* with a relevance score — computed with the
    same `1 / (1 + distance)` formula the backend itself uses (Sprint 9),
    reused rather than reinvented, so the number Sarah sees matches what
    the backend actually calculated. Right next to the answer,
    `AnswerQualityBadge` shows **"✓ Excellent match · 78%"** in green,
    reading `search_evaluation.quality` and `.best_score` straight from the
-   same `/chat` response — verified live during testing with this exact
-   question and document.
+   stream's final `"done"` event — verified live during testing, watching
+   the answer render progressively before the badge and sources appeared.
 6. If Sarah had instead asked something the document doesn't cover, the
    hallucination guard's *"I don't have enough information"* response
    (Sprint 9) renders the same way any other answer does — the UI doesn't

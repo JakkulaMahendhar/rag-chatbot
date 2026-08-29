@@ -177,6 +177,31 @@ sprint was built — but wasn't read by anything for a while. The frontend
 (Sprint 13) later added `AnswerQualityBadge`, which is what finally
 displays it to Sarah.
 
+## 7. Streaming the final answer — deliberately not token-level LLM streaming
+
+**File:** `app/api/chat.py`
+
+Sarah's chat originally had one way to get an answer: wait for the whole
+`POST /chat` request, then see the complete text appear at once. Later, a
+`POST /chat/stream` endpoint was added so the UI could reveal the answer
+progressively instead — but it reveals the *already-finished* answer a
+word at a time, rather than streaming the LLM's own token output live.
+
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| `_run_chat()` (shared helper) | Runs the exact same pipeline as `POST /chat` — retrieval through the hallucination guard's validate-then-maybe-regenerate — used by both routes | Guarantees `/chat/stream` behaves identically to `/chat` in every way that matters (same retrieval, same safety check, same errors); the only thing that differs is how the finished result gets to the browser | Building a second, separate pipeline for streaming would risk the two drifting apart, and would mean re-solving the hallucination guard problem twice |
+| `event_stream()` generator in `/chat/stream` | Splits `result["answer"]` on spaces and yields each word as a Server-Sent Event, with a small delay between them, then a final `"done"` event carrying `sources`/`search_evaluation`/`conversation_id` | Real per-token LLM streaming would mean showing Sarah the *first* generated answer live — but that's the version the hallucination guard hasn't checked yet. If it later gets rejected and regenerated (Sprint 9, above), Sarah would watch a wrong answer type itself out, then get replaced by a different one | Streaming only after the guard has already decided keeps the safety check fully intact — the tradeoff is that this is a reveal effect, not a reduction in total wait time (it's a few milliseconds *longer*, from the reveal delay itself) |
+
+**The real tradeoff, stated plainly:** this makes the chat feel more
+responsive — Sarah sees text appearing immediately instead of a spinner
+for the whole request — without weakening the hallucination guard at all.
+What it does *not* do is reduce how long Sarah waits for the *complete*
+answer to finish appearing; that's still gated on the full pipeline,
+guard included. A system that streamed the LLM's raw first-draft tokens
+live would feel faster to the first word, but would have to either drop
+the safety check or awkwardly correct itself mid-answer when the guard
+rejects what's already on screen.
+
 ## How the whole pipeline connects, for Sarah's one question
 
 Question → embed → hybrid search (vector + BM25) finds chunk `"14-1"` as
@@ -186,4 +211,7 @@ shortlist → `ContextWindowManager` builds a clean prompt → Gemini generates
 month"* → the hallucination guard checks that claim against chunk `"14-1"`
 and confirms it's grounded → `SourceBuilder` attaches the source →
 `SearchEvaluator` grades the match (`0.765` → `"Excellent"`) → the answer,
-its source, and its quality label are all returned to Sarah together.
+its source, and its quality label are all returned to Sarah together —
+either in one JSON response (`POST /chat`), or revealed word by word over
+SSE with the same information following in a final event (`POST
+/chat/stream`, Sprint 13's chat UI).

@@ -90,8 +90,12 @@ and **answering a question**. Detailed per-sprint reasoning lives in
                               │
                               ▼
                  ◀── JSON: { answer, sources[], search_evaluation } ──
+                     (POST /chat/stream instead: same 9 stages run to
+                      completion first, then the SAME answer/sources/
+                      evaluation are revealed over SSE, word by word -
+                      not token-level LLM streaming, see Sprint 9)
  Browser renders:
-   - the answer text
+   - the answer text (progressively, if /chat/stream was used)
    - "Answered using: <filename>" per source, with % match
    - AnswerQualityBadge: "✓ Excellent match · 78%"
 ```
