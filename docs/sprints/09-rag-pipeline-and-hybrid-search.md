@@ -45,13 +45,35 @@ class Reranker:
         scores = self.model.predict(pairs)
         for doc, score in zip(documents, scores):
             doc.rerank_score = 1 / (1 + math.exp(-float(score)))  # sigmoid
-        return sorted(documents, key=lambda x: x.rerank_score, reverse=True)[:3]
+        ranked = sorted(documents, key=lambda x: x.rerank_score, reverse=True)
+        # Anything below reranker_score_threshold is dropped before the
+        # top-3 cut - see "A real bug" below for why this line matters.
+        ranked = [d for d in ranked if d.rerank_score >= settings.reranker_score_threshold]
+        return ranked[:3]
 ```
 
 | Class / library | What it does | Why we used it | How it compares to the alternative |
 |---|---|---|---|
 | `CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")` | Looks at Sarah's question *and* a candidate chunk together, jointly, and scores how relevant that specific pairing is | Far more accurate than comparing two independently-computed vectors, because the model actually reads the question and the chunk side by side | Too slow to run against every chunk in a large document set — which is exactly why hybrid search (above) narrows thousands of chunks down to ~10 candidates first, and only those 10 get this more expensive, more precise pass |
 | `AIServiceRegistry.get_reranker()` | Loads the `CrossEncoder` once per process and hands the same instance to every chat request | The cross-encoder is loaded from disk exactly like the embedding model (Sprint 5) — reusing the same singleton pattern means Sarah's second and third questions don't each pay a multi-second model-load cost | `RAGChatService` originally called `Reranker()` directly on every request, reloading the model from disk every time; this was found and fixed after real timing logs showed several extra seconds on every single chat message — see [Sprint 5](05-embeddings-and-ai-registry.md) for the fix and [the bugs doc](14-bugs-and-lessons-learned.md) for the measured before/after |
+| `settings.reranker_score_threshold` (0.20 default) | A hard floor — a chunk scoring below this is dropped entirely, even if there are fewer than 3 candidates left afterward | Sarah might have two completely unrelated documents uploaded (her leave policy, and an unrelated training PDF). Without a floor, `[:3]` would still return 3 chunks even when only 1 is actually relevant, padding the list with noise just to hit the count | See "A real bug" below — this setting existed in config from the start but wasn't actually being applied here until it was found live |
+
+### A real bug: the score floor existed in config but was never applied
+
+`app/core/config.py` has had `reranker_score_threshold: float = 0.20` since
+this sprint was first built. `Reranker.rerank()` never read it — it just
+returned `sorted(...)[: 3]`, always exactly the top 3 chunks, however weak
+one of them was. Asking *"Leave Policy Please?"* with both
+`Employee_Leave_Policy.pdf` and a completely unrelated document uploaded,
+the sources list showed 3 results: 2 genuinely from the leave policy, and
+one chunk from the unrelated document at **0% relevance** — it only made
+the list because the code always filled 3 slots, not because it was
+actually useful. That chunk wasn't just visible in the UI as clutter —
+it was also sitting in the LLM's context as noise on every request like
+this. Fixed by filtering out anything below `reranker_score_threshold`
+*before* the `[:3]` cut, so "nothing else is relevant" can correctly mean
+1 source, or 0, instead of always exactly 3. Verified live: the same
+two-document setup went from 3 sources (one at 0%) to exactly 1.
 
 This two-stage pattern — fast broad retrieval, then a slower precise
 re-score of just the finalists — is a standard information-retrieval
