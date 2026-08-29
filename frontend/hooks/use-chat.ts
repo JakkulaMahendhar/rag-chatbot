@@ -15,6 +15,9 @@ export interface ChatMessage {
   quality?: string;
   bestScore?: number;
   error?: string;
+  // True while this message's answer is still being revealed chunk by
+  // chunk - see chat-message.tsx for the blinking-cursor indicator.
+  isStreaming?: boolean;
 }
 
 export function useChat() {
@@ -32,37 +35,55 @@ export function useChat() {
       setMessages((prev) => [...prev, userMessage]);
       setIsPending(true);
 
+      const assistantId = crypto.randomUUID();
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantId, role: "assistant", content: "", isStreaming: true },
+      ]);
+
       try {
-        // No streaming - see types/chat.ts. This resolves only once
-        // the full answer is ready.
-        const response = await chatApi.send({
+        for await (const event of chatApi.stream({
           question,
           conversation_id: conversationId,
           llm_provider: llmProviderStorage.get(),
-        });
-
-        setConversationId(response.conversation_id);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: response.answer,
-            sources: response.sources,
-            quality: response.search_evaluation?.quality,
-            bestScore: response.search_evaluation?.best_score,
-          },
-        ]);
+        })) {
+          if (event.type === "token") {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === assistantId
+                  ? { ...message, content: message.content + event.content }
+                  : message,
+              ),
+            );
+          } else {
+            setConversationId(event.conversation_id);
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === assistantId
+                  ? {
+                      ...message,
+                      sources: event.sources,
+                      quality: event.search_evaluation?.quality,
+                      bestScore: event.search_evaluation?.best_score,
+                      isStreaming: false,
+                    }
+                  : message,
+              ),
+            );
+          }
+        }
       } catch (error) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: "",
-            error: isApiError(error) ? error.message : "Something went wrong.",
-          },
-        ]);
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  error: isApiError(error) ? error.message : "Something went wrong.",
+                  isStreaming: false,
+                }
+              : message,
+          ),
+        );
       } finally {
         setIsPending(false);
       }

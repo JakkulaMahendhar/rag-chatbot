@@ -50,6 +50,9 @@ export function ChatMessage({ message }: { message: ChatMessageType }) {
             ) : (
               <div className="prose-sm max-w-none [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_p:not(:last-child)]:mb-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                {message.isStreaming && (
+                  <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-current align-text-bottom" />
+                )}
               </div>
             )}
           </div>

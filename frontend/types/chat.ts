@@ -2,7 +2,10 @@
 // app/services/rag_chat.py RAGChatService.chat() (see source_builder.py
 // for SourceReference, app/models/source.py for its exact fields).
 //
-// No streaming today - /chat is a single blocking JSON response.
+// POST /chat/stream reveals the same already-final answer over Server-
+// Sent Events instead of one JSON blob - see ChatStreamEvent below. It's
+// not token-level LLM streaming: the hallucination guard still runs to
+// completion first, same as POST /chat.
 // No page numbers - PDF text is parsed as one concatenated string,
 // page boundaries aren't preserved (see app/services/parser.py).
 
@@ -22,7 +25,7 @@ export interface SourceReference {
   rerank_score: number | null;
 }
 
-interface EvaluationSummary {
+export interface EvaluationSummary {
   average_score: number;
   best_score: number;
   quality: string;
@@ -36,3 +39,17 @@ export interface ChatResponse {
   search_evaluation: EvaluationSummary & { question: string; retrieved: number };
   evaluation: EvaluationSummary;
 }
+
+export interface ChatStreamTokenEvent {
+  type: "token";
+  content: string;
+}
+
+export interface ChatStreamDoneEvent {
+  type: "done";
+  conversation_id: string;
+  sources: SourceReference[];
+  search_evaluation: EvaluationSummary & { question: string; retrieved: number };
+}
+
+export type ChatStreamEvent = ChatStreamTokenEvent | ChatStreamDoneEvent;
