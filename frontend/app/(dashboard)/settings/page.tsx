@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { Cloud, HardDrive, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/auth/auth-context";
+import { useLlmProvider } from "@/hooks/use-llm-provider";
 import { cn } from "@/lib/utils";
 
 const THEME_OPTIONS = [
@@ -17,9 +18,25 @@ const THEME_OPTIONS = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
+const LLM_PROVIDER_OPTIONS = [
+  {
+    value: "ollama",
+    label: "Ollama",
+    description: "Local model, runs on the server - default.",
+    icon: HardDrive,
+  },
+  {
+    value: "gemini",
+    label: "Gemini",
+    description: "Google's cloud model - needs a Gemini API key configured on the server.",
+    icon: Cloud,
+  },
+] as const;
+
 export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { provider, setProvider } = useLlmProvider();
   const router = useRouter();
 
   return (
@@ -61,6 +78,35 @@ export default function SettingsPage() {
               >
                 <Icon className="size-4" />
                 {option.label}
+              </button>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Model</CardTitle>
+          <CardDescription>Choose which LLM answers your chat questions.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-2">
+          {LLM_PROVIDER_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            const isActive = provider === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setProvider(option.value)}
+                aria-pressed={isActive}
+                className={cn(
+                  "flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 text-center text-sm transition-colors",
+                  isActive ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+                )}
+              >
+                <Icon className="size-4" />
+                {option.label}
+                <span className="text-xs text-muted-foreground">{option.description}</span>
               </button>
             );
           })}

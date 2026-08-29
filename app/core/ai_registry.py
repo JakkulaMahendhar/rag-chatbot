@@ -12,7 +12,7 @@ class AIServiceRegistry:
     """
 
     _embedding_model = None
-    _llm = None
+    _llms: dict = {}
     _reranker = None
 
 
@@ -41,28 +41,41 @@ class AIServiceRegistry:
 
 
     @classmethod
-    def get_llm(cls):
+    def get_llm(cls, provider: str | None = None):
 
-        if cls._llm is None:
+        # `provider` lets a caller (e.g. a per-request "use Gemini instead
+        # of Ollama" toggle from the frontend) override the server's
+        # configured default without changing global settings. Falls back
+        # to settings.llm_provider when not given, same as before.
+        provider = provider or settings.llm_provider
 
-            if settings.llm_provider == "gemini":
+        if provider not in cls._llms:
 
-                cls._llm = GeminiService()
+            if provider == "gemini":
+
+                if not settings.gemini_api_key:
+
+                    raise ValueError(
+                        "Gemini is not configured on this server "
+                        "(GEMINI_API_KEY is not set)."
+                    )
+
+                cls._llms[provider] = GeminiService()
 
 
-            elif settings.llm_provider == "ollama":
+            elif provider == "ollama":
 
-                cls._llm = OllamaService()
+                cls._llms[provider] = OllamaService()
 
 
             else:
 
                 raise ValueError(
-                    f"Unsupported LLM provider: {settings.llm_provider}"
+                    f"Unsupported LLM provider: {provider}"
                 )
 
 
-        return cls._llm
+        return cls._llms[provider]
 
 
     @classmethod

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 import { chatApi } from "@/lib/api/chat";
 import { isApiError } from "@/lib/auth/auth-context";
+import { llmProviderStorage } from "@/lib/llm-provider";
 import type { SourceReference } from "@/types/chat";
 
 export interface ChatMessage {
@@ -37,6 +38,7 @@ export function useChat() {
         const response = await chatApi.send({
           question,
           conversation_id: conversationId,
+          llm_provider: llmProviderStorage.get(),
         });
 
         setConversationId(response.conversation_id);

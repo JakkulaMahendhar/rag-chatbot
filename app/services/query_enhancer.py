@@ -5,9 +5,9 @@ from app.core.ai_registry import AIServiceRegistry
 class QueryEnhancer:
 
 
-    def __init__(self):
+    def __init__(self, llm=None):
 
-        self.llm = (
+        self.llm = llm or (
             AIServiceRegistry
             .get_llm()
         )

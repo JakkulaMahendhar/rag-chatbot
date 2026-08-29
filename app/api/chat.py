@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,14 @@ class ChatRequest(BaseModel):
         example=None,
     )
 
+    # Optional per-request override of the server's default LLM
+    # (settings.llm_provider, "ollama" unless configured otherwise) - lets
+    # the frontend's Settings screen switch to Gemini without a restart.
+    llm_provider: Literal["ollama", "gemini"] | None = Field(
+        default=None,
+        example=None,
+    )
+
 
 @router.post("")
 async def chat(
@@ -40,9 +50,16 @@ async def chat(
     owned by that user.
     """
 
-    service = RAGChatService(
-        session=session,
-    )
+    try:
+
+        service = RAGChatService(
+            session=session,
+            llm_provider=request.llm_provider,
+        )
+
+    except ValueError as error:
+
+        raise HTTPException(status_code=400, detail=str(error))
 
     return await service.chat(
         question=request.question,

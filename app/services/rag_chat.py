@@ -33,7 +33,7 @@ from app.services.query_access import QueryAccessService
 
 class RAGChatService:
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, llm_provider: str | None = None):
 
         logger.info("Initializing RAGChatService")
 
@@ -41,7 +41,9 @@ class RAGChatService:
 
         self.retrieval_service = RetrievalService(session=session)
 
-        self.llm = AIServiceRegistry.get_llm()
+        # llm_provider lets the frontend's Settings toggle pick Gemini
+        # instead of the server's default (Ollama) on a per-request basis.
+        self.llm = AIServiceRegistry.get_llm(llm_provider)
 
         self.conversation_service = ConversationService()
 
@@ -53,7 +55,7 @@ class RAGChatService:
 
         logger.info("QueryAccessService initialized")
 
-        self.query_enhancer = QueryEnhancer()
+        self.query_enhancer = QueryEnhancer(self.llm)
 
         logger.info("QueryEnhancer initialized")
 

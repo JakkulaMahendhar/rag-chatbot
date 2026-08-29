@@ -9,6 +9,8 @@
 export interface ChatRequest {
   question: string;
   conversation_id?: string | null;
+  // Optional override of the server's default LLM - see lib/llm-provider.ts.
+  llm_provider?: "ollama" | "gemini" | null;
 }
 
 export interface SourceReference {
