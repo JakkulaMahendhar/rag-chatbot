@@ -1,10 +1,11 @@
 # Sprint 3 — Document Parsing
 
-## Objective
+## The example at this step
 
-A PDF or DOCX file is a binary format — it's not just "text with some
-formatting." Before anything else can happen (chunking, embedding), we need
-to extract *plain text* from these binary containers.
+`Employee_Leave_Policy.pdf` is now sitting on disk as a binary PDF file.
+A PDF is not "text with some formatting" — it's a binary container. Before
+anything else can happen, the plain text (including the sick-leave
+sentence on page 2) has to be pulled out of it.
 
 ## What we built
 
@@ -33,73 +34,35 @@ class ParserService:
         return text
 ```
 
-## Why PyMuPDF (imported as `fitz`) for PDFs
+## Classes & libraries used, and why
 
-PDF text extraction is notoriously inconsistent across libraries — some PDFs
-have text as real selectable text, others are scanned images (no extractable
-text at all), others have text in a strange internal order. PyMuPDF was
-chosen because it:
-- Handles the vast majority of "normal" PDFs (text-based, not scanned
-  images) correctly and fast
-- Is actively maintained and widely used in production systems
-- Does *not* attempt OCR (optical character recognition) — a deliberate
-  scope boundary: this project extracts text that already exists in the
-  file, it does not read text out of images
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| **PyMuPDF** (imported as `fitz`) | Opens a PDF and extracts its plain text, page by page | Fast, actively maintained, and correctly handles the vast majority of normal (non-scanned) PDFs like Acme Corp's policy document | `PyPDF2` is more commonly known but slower and less reliable on real-world PDFs with complex layouts; full OCR libraries (e.g. Tesseract) are far heavier and unnecessary for a PDF that already has real text in it, like this one |
+| **python-docx** | Reads the paragraph structure of a `.docx` file (internally a ZIP of XML files) | Gives clean, already-separated paragraph text via `"\n".join(paragraphs)` | Manually unzipping and parsing the XML would reproduce what this library already does correctly |
+| `ParserService.parse()` | One entry point that picks the right extraction method by file extension | The rest of the pipeline (chunking, embedding) calls one function and never needs to know if the source was a PDF or a DOCX | Calling `parse_pdf()`/`parse_docx()` directly from the caller would leak file-type-specific logic into code that shouldn't care |
 
-## Why python-docx for Word documents
+## How it works — extracting Sarah's document
 
-`python-docx` reads the actual paragraph structure of a `.docx` file (which
-is really a ZIP archive of XML files internally) and gives clean paragraph
-text, joined with `"\n".join(paragraphs)`.
+1. `Employee_Leave_Policy.pdf` (3 pages) arrives from Sprint 2's upload.
+2. `ParserService.parse()` sees the `.pdf` extension and calls
+   `parse_pdf()`.
+3. PyMuPDF opens the file and iterates all 3 pages, concatenating their
+   text into one string.
+4. The result looks like:
+   `"Welcome to Acme Corp... Section 2: Leave Policy. All full-time
+   employees are entitled to 12 paid sick leaves per calendar year,
+   accrued monthly at 1 leave per month... Section 3: Benefits..."`
 
-## A real, important limitation this creates (see Sprint 9 for the consequence)
+This single string — with the sick-leave sentence now sitting inside it as
+plain text — is exactly what Sprint 4's chunker receives next.
 
-**PDF page boundaries are lost.** Look closely at `parse_pdf`:
-```python
-text = ""
-for page in document:
-    text += page.get_text()
-```
-Every page's text is concatenated into **one single string** with no marker
-for where one page ends and the next begins. This was a deliberate
-simplification at the time, but it had a real, confirmed downstream
-consequence: **this system cannot cite page numbers in its answers.** When
-the frontend (much later) needed to show "which page is this answer from,"
-the honest answer — verified by reading this exact code — is: it can't,
-because the information was thrown away at the parsing stage. The frontend
-documentation (`docs/sprints/13-frontend-nextjs.md`) explicitly documents
-this as a "don't invent data" decision: rather than fabricate a fake page
-number, the UI shows filename + relevance score only.
+## One deliberate scope boundary worth knowing
 
-## How it works — a real walkthrough
-
-1. `employee-handbook.pdf` (3 pages) arrives from Sprint 2's upload.
-2. `ParserService.parse()` detects the `.pdf` extension.
-3. PyMuPDF opens the file, iterates all 3 pages, concatenates their text.
-4. Returns one long string like:
-   `"Welcome to Acme Corp...  [page 1 content]  Section 2: Leave Policy...
-   [page 2 content]  Section 3: Benefits...  [page 3 content]"`
-   — with no indication where page 1 ends and page 2 begins.
-
-## Positive scenarios
-
-- Correctly extracts text from standard, text-based PDFs and DOCX files —
-  verified repeatedly during this project with real uploaded test documents.
-- Fast — no OCR or heavy processing, just structural extraction.
-- Clean abstraction: `ParserService.parse()` is the *only* thing the rest of
-  the pipeline needs to call; it doesn't need to know PDF vs DOCX internals.
-
-## Negative scenarios / limitations
-
-- **Scanned/image-only PDFs return empty or near-empty text** — there's no
-  OCR fallback. A scanned contract with no embedded text layer would
-  silently produce a document with ~0 usable chunks.
-- **No page number tracking** (explained above) — a real, confirmed
-  limitation, not a hypothetical one.
-- **No table structure preservation** — PyMuPDF's `get_text()` extracts
-  text in reading order but doesn't preserve table rows/columns as
-  structured data; a table becomes a jumble of text that may not read
-  coherently out of context.
-- **Corrupted or password-protected files** raise an exception (caught
-  higher up by `DocumentProcessingException`, see Sprint 12's worker docs)
-  rather than partially succeeding.
+`page.get_text()` concatenates every page into one string with no marker
+for where page 1 ends and page 2 begins. This is a scope choice, not an
+oversight: the parser's only job is turning binary → plain text. Anything
+that needs page numbers (like citing "this came from page 2") would need
+to be built on top of this, tracking boundaries explicitly — the frontend
+(Sprint 13) deliberately shows filename + relevance instead of a page
+number, rather than inventing one.

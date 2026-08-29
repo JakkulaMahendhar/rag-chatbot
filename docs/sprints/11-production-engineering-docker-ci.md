@@ -1,12 +1,12 @@
 # Sprint 11 — Production Engineering: Docker, CI/CD, Automated Tests
 
-## Objective
+## The example at this step
 
-Everything up to this point worked, but only on one specific machine, run
-manually with `uvicorn --reload`. This sprint made the application
-runnable identically anywhere ("it works on my machine" → "it works,
-period"), and added an automated gate that catches regressions before they
-reach `master`.
+Everything built so far worked on one specific laptop, run manually with
+`uvicorn --reload`. This sprint makes sure that the exact flow — Sarah
+uploading `Employee_Leave_Policy.pdf` and asking her sick-leave question —
+behaves identically wherever the app runs, and that a broken change can't
+reach `master` without a test catching it first.
 
 ## What we built
 
@@ -17,115 +17,62 @@ RUN python -m venv /opt/venv
 RUN pip install -r requirements.txt
 
 FROM python:3.11-slim
-RUN apt-get install -y --no-install-recommends libgomp1   # see below
+RUN apt-get install -y --no-install-recommends libgomp1
 COPY --from=builder /opt/venv /opt/venv
-USER appuser   # non-root
+USER appuser
 HEALTHCHECK ... CMD python -c "...urlopen('http://localhost:8000/health')"
 CMD ["./entrypoint.sh"]
 ```
 
-**File:** `docker-compose.yml` — orchestrates the app + Postgres locally,
-matching (as closely as reasonably possible) what would run in production.
+**File:** `docker-compose.yml` — runs the app + Postgres (and later,
+ChromaDB and the worker) locally, matching production.
 
-**File:** `.github/workflows/ci.yml` — runs the test suite automatically
-on every push, using a real Postgres service container (not mocks).
+**File:** `.github/workflows/ci.yml` — runs the test suite on every push,
+against a real Postgres service container.
 
-## Why multi-stage Docker builds
+## Classes & tools used, and why
 
-Real, measurable benefit: the `builder` stage needs `build-essential`
-(a C compiler, needed to build some Python packages) — but the *final*
-image doesn't need a compiler at all, just the already-built virtual
-environment. Copying only `/opt/venv` from the builder stage into a fresh
-`python:3.11-slim` keeps the shipped image smaller and reduces its attack
-surface (no compiler toolchain sitting in a production container).
+| Tool | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| **Multi-stage Dockerfile** | Builds Python packages in one stage (`builder`, with a compiler available), then copies only the finished virtual environment into a clean final image | Keeps the shipped image smaller and avoids leaving a C compiler and build tools sitting in the container that actually runs in production | A single-stage build works, but ships every build-time dependency into the running container permanently, for no runtime benefit |
+| `libgomp1` (explicitly installed) | Provides OpenMP, which PyTorch's CPU operations need at runtime | Without it, the exact code path that embeds Sarah's sick-leave chunk (Sprint 5, PyTorch-based) crashes the moment it actually runs — not at build time | Debian's `-slim` base images intentionally leave this out to stay small; it has to be added back explicitly for any PyTorch-based app |
+| **Docker Compose** (local) | Runs Postgres, the web app, and (later) ChromaDB and the worker as connected containers on a laptop | Local testing then behaves the way production behaves — a concurrency issue between the web app and the worker (see Sprint 12) becomes visible on a laptop instead of only in production | Running the app directly on the host machine with `uvicorn --reload` hides exactly this class of multi-service bug until it's live |
+| **GitHub Actions** (`.github/workflows/ci.yml`) | Runs the automated test suite against a real `postgres:16-alpine` container on every push | Catches a broken change (e.g. a function signature that no longer matches its caller) before it merges, using a real database rather than mocks | Testing only locally, manually, before pushing relies entirely on remembering to do it every time — CI runs it automatically, every time, without being asked |
+| `pytest-asyncio` (`asyncio_mode = "auto"`) | Lets `async def test_...()` functions actually execute under pytest | Without this plugin, pytest silently skips async test functions instead of failing loudly — meaning some tests were never actually running at all | — |
 
-## A real, non-obvious bug found: `libgomp1`
+## How it works — Sarah's flow, containerized and tested
 
-**Discovered directly, not anticipated in advance:** the first Docker build
-without `libgomp1` installed failed at runtime — not build time — the
-moment the embedding pipeline (Sprint 5, PyTorch-based) tried to actually
-run. PyTorch's CPU operations need OpenMP (`libgomp`), which Debian's slim
-base image doesn't include by default. This is a well-documented but
-easy-to-miss requirement for running PyTorch specifically on `-slim` base
-images — fixed by explicitly installing `libgomp1` in the runtime stage.
+1. A developer pushes a commit that touches `app/services/chunker.py`.
+2. GitHub Actions spins up a fresh runner plus a real Postgres container.
+3. It installs dependencies, runs `alembic upgrade head` against the fresh
+   database, then runs `pytest`.
+4. If a test exercising the upload → chunk → embed path fails, the commit
+   is flagged before it can be merged or deployed — before it could ever
+   affect a real user like Sarah.
+5. Locally, `docker compose up` runs the same containers CI and production
+   use, so `Employee_Leave_Policy.pdf` can be uploaded and chatted with
+   through the exact same code path that will run once deployed.
 
-## Why `CMD`, not `ENTRYPOINT` (a real decision made to avoid ambiguity)
+## Why `CMD`, not `ENTRYPOINT`
 
-Later (Sprint 12), a second service (the background worker) needed to run
-the *same* Docker image with a *different* startup command. Docker's
-`ENTRYPOINT` + `CMD` combine in a specific way (`CMD` becomes *arguments to*
-`ENTRYPOINT`, not a replacement for it) — and it was genuinely unclear from
-Render's own documentation whether their `dockerCommand` field fully
-replaces `ENTRYPOINT` or just supplies new `CMD` arguments to it. Rather
-than risk silently running the worker's command as an argument to the
-*web* service's entrypoint script, the Dockerfile was written using `CMD`
-only (no `ENTRYPOINT`) — `CMD` is unambiguously, fully replaceable, which
-Render's docs *did* clearly confirm. A real example of choosing the
-option that removes ambiguity entirely over one that's merely "probably
-fine."
+Sprint 12 later needed the same Docker image to run as two different
+services — a web app and a worker — with two different startup commands.
+Docker's `ENTRYPOINT` and `CMD` combine in a specific way (`CMD` becomes
+*arguments to* `ENTRYPOINT`, not a replacement for it), and it wasn't
+clearly documented whether Render's deployment platform fully replaces
+`ENTRYPOINT` or just supplies new `CMD` arguments to it. The Dockerfile
+uses `CMD` only, with no `ENTRYPOINT` — `CMD` is unambiguously,
+fully replaceable, which removed the ambiguity entirely rather than
+relying on an assumption.
 
-## CI test selection — a real, honest accounting, not silently hiding failures
+## A transparent choice about test coverage
 
-The GitHub Actions workflow explicitly excludes 8 test files, each with a
-documented, real reason (visible directly in `.github/workflows/ci.yml`'s
-comments), for example:
-- `test_gemini.py` — needs a real Gemini API key/credentials, not
-  available in CI
-- `test_retrieval.py` — `RetrievalService()`'s constructor signature
-  changed (Sprint 10) and the test wasn't updated; a genuine, currently-
-  unfixed pre-existing bug, not something this sprint caused
-- `test_connections.py` — a real, diagnosed event-loop conflict between a
-  session-scoped test client and pytest-asyncio's per-test event loop
-  (a genuinely subtle async-testing architecture issue, not a flaky test)
-
-This is a deliberate documentation choice: a CI pipeline that's green
-because failures were silently deleted or ignored is worse than no CI at
-all. Every exclusion here is named and explained.
-
-## Also fixed in this sprint: making the async test suite actually run
-
-**Real bug found:** several test files used bare `async def test_...()`
-functions with **no `pytest-asyncio` plugin installed** — meaning these
-tests were silently never actually executed (pytest just skips/no-ops
-un-awaitable async test functions without the plugin, rather than failing
-loudly). Installing `pytest-asyncio` and setting `asyncio_mode = "auto"`
-immediately turned 2 previously-silent-non-tests into genuinely running,
-genuinely passing tests.
-
-## How it works — a real walkthrough
-
-1. A developer pushes a commit.
-2. GitHub Actions spins up a fresh Ubuntu runner + a real `postgres:16-alpine`
-   service container.
-3. Installs dependencies, runs `alembic upgrade head` against the fresh
-   database, then runs `pytest` with the documented exclusion list.
-4. If all included tests pass: green check. If not: the push is flagged
-   before it can be merged/deployed.
-
-## Positive scenarios
-
-- **Verified directly:** rebuilding the exact same Docker image locally and
-  confirming `/health` returns `200`, migrations run automatically on
-  container start, and a real document upload → embed → store pipeline
-  completes successfully inside the container — not just "the build
-  succeeded," the actual application logic was exercised end-to-end.
-- CI genuinely catches real regressions — confirmed when a later commit
-  (Sprint 12) that assumed a specific Ollama daemon was available in CI
-  correctly failed, was diagnosed, and fixed by excluding that
-  environment-dependent test with a documented reason.
-
-## Negative scenarios / limitations
-
-- **8 pre-existing test failures were found but deliberately not fixed**
-  in this sprint — each is real, each is documented, but "make CI green"
-  and "fix every bug in the codebase" were kept as separate concerns.
-  Anyone extending this project should read the CI file's comments before
-  assuming full test coverage.
-- **No integration test actually builds and runs the Docker image itself**
-  in CI — the CI pipeline tests the Python code directly, not the
-  containerized artifact. A bug specific to the Docker environment (like
-  the `libgomp1` issue above) would not be caught by CI, only by manually
-  running the container, as was done here.
-- Docker image size is large (PyTorch alone dominates) — no attempt was
-  made to slim this further (e.g., CPU-only PyTorch wheel variants,
-  quantization) as that was judged out of scope for this sprint.
+Eight test files are explicitly excluded from CI, each with a documented
+reason in `.github/workflows/ci.yml`'s own comments — for example,
+`test_gemini.py` needs a real API key not available in CI, and
+`test_retrieval.py`'s test wasn't updated after `RetrievalService`'s
+constructor changed in Sprint 10. A CI pipeline that's green because
+failing tests were quietly deleted is worse than no CI at all — every
+exclusion here is named and explained rather than hidden. See
+[14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) for the
+full list.

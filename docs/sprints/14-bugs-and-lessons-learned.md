@@ -1,9 +1,12 @@
 # Bugs & Lessons Learned — A Consolidated, Honest Record
 
-Every entry here is a **real, reproduced** bug found during this project —
-not a hypothetical "what could go wrong." Each was diagnosed with evidence
-(logs, tracebacks, direct testing), not guessed at. This file is a quick
-index; see the linked sprint file for the full diagnosis story.
+Every entry here is a **real, reproduced** bug found while building the
+exact pipeline documented in this folder — the one that takes Sarah's
+`Employee_Leave_Policy.pdf` from upload to a correct chat answer. Each was
+diagnosed with evidence (logs, tracebacks, direct testing), not guessed
+at. This file is a quick index; see the linked sprint file for the full
+diagnosis story, including why the eventual fix works better than the
+approach it replaced.
 
 ## Backend bugs
 

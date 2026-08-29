@@ -1,10 +1,12 @@
 # Sprint 1 — Project Setup
 
-## Objective
+## The example at this step
 
-Before writing any AI/RAG logic, establish a backend skeleton that won't need
-to be restructured later as the project grows. Getting this wrong early
-(e.g., putting everything in one file) creates painful refactors later.
+Before Sarah can upload anything, the backend needs a folder structure that
+won't need to be torn apart every time a new feature (auth, a worker,
+hybrid search) gets added. This file explains that structure using the
+question: *when Sarah's upload request arrives, which files does it pass
+through, and why is the project organized that way?*
 
 ## What we built
 
@@ -19,60 +21,39 @@ app/
 └── database/     # ORM models, repositories, DB session management
 ```
 
-**Real file that started it all:** `app/main.py` — even in its very first
-version, it did nothing but:
-```python
-app = FastAPI()
+## The layers, what each one does, and why it exists
 
-@app.get("/")
-def home():
-    return {"message": "Welcome to AI Knowledge Assistant"}
-```
+| Layer | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| `api/` | Reads Sarah's HTTP request, calls a service, returns an HTTP response | Keeps HTTP concerns (status codes, request parsing) completely separate from business logic | Putting `chunk_text()` logic directly inside a route handler works at first, but makes it impossible to reuse that logic from a background worker later without duplicating it |
+| `services/` | Contains the actual logic — parsing, chunking, embedding, retrieval | A service has no idea it's being called from an HTTP request; it just takes data and returns data | This is exactly what let Sprint 12 move document processing into a background worker: `DocumentProcessingService` didn't change internally, it just got called from `app/worker.py` instead of `app/api/upload.py` |
+| `schemas/` | What the *outside world* (Sarah's browser) sends and receives — request/response contracts | Lets internal data shapes change without breaking the API, and vice versa | Reusing one Pydantic model for both "what the API returns" and "what's passed between services" means an internal refactor can accidentally change the public API contract |
+| `models/` | Internal data shapes passed between services (e.g. a parsed chunk before it has an ID) | Keeps internal representations free to evolve independently of what the API promises | Same reasoning as above, from the other direction |
+| `core/` | Settings, logging, shared exceptions | One place for anything every layer needs, instead of scattering config reads through the codebase | Hardcoding a value like `chunk_size` inside `chunker.py` directly means changing it later means hunting through files instead of editing one `Settings` class (Sprint 7) |
+| `database/` | SQLAlchemy models, repositories, session management | Isolates *how* data is stored (Postgres, SQLAlchemy) from *what* the rest of the app needs (a `Document` object) | Without this layer, a database schema change would ripple directly into business logic instead of stopping at the repository |
 
-## Why this structure specifically
+## How it works — Sarah's request, layer by layer
 
-This follows a layered architecture, enforcing **separation of concerns**:
+1. Sarah's browser sends `POST /upload` with `Employee_Leave_Policy.pdf`.
+2. `app/api/upload.py` (the API layer) receives the HTTP request, checks
+   the file extension, and calls `StorageService` and
+   `DocumentRegistrationService` (the service layer) — it never touches a
+   database directly.
+3. Those services use `app/database/repositories/document_repository.py`
+   to write a `Document` row for Sarah, without knowing or caring that the
+   request came from HTTP — the exact same service could be called from a
+   script or a worker.
+4. The response sent back to Sarah's browser is shaped by
+   `app/schemas/upload.py`, not by whatever internal object the service
+   happened to use.
 
-- **`api/`** should only know about HTTP (status codes, request parsing). It
-  should never contain business logic like "how do we chunk a document."
-- **`services/`** contains the actual logic and has no idea it's being called
-  from an HTTP request — it could just as easily be called from a CLI script
-  or a background worker (this exact property is what made Sprint 12's
-  worker-queue split possible later *without rewriting the processing logic*
-  — `DocumentProcessingService` didn't need to change internally, it just
-  moved to being called from `app/worker.py` instead of an API route).
-- **`schemas/` vs `models/`** — a deliberate split: `schemas/` is what the
-  *outside world* (API clients) sees; `models/` is internal data passed
-  between services. This means we can change internal data shapes without
-  breaking the API contract, and vice versa.
+## Why this paid off concretely, later in the project
 
-## Real example of why this paid off later
-
-When Sprint 10 added authentication, **zero changes were needed** to
+When Sprint 10 added authentication, **zero changes were needed** in
 `app/services/parser.py` or `app/services/chunker.py` — auth was added
 entirely in a new `app/auth/` module and wired in via FastAPI's dependency
-injection (`Depends(get_current_user)`) at the API layer. The business logic
-never had to know a user system existed.
-
-## Positive scenarios (what worked well)
-
-- The structure scaled from a single `/` endpoint (Sprint 1) to 6 full
-  routers (`upload`, `documents`, `auth`, `chat`, `search`, `health`) by
-  Sprint 10 without ever needing a "big refactor."
-- New engineers (or, in this case, an AI assistant picking this project back
-  up in a later session) can predict where to find code: "how does chunking
-  work?" → `app/services/chunker.py`, no searching required.
-
-## Negative scenarios / honest limitations
-
-- One real inconsistency that persisted: `app/models/` accumulated both
-  genuinely-internal models (`app/models/chunk.py`) *and* some that are
-  really API-shaped (`app/models/search.py`'s `SearchResult` is returned
-  directly by an endpoint). The `schemas/` vs `models/` boundary wasn't
-  enforced with 100% discipline throughout the project — a minor,
-  non-breaking architectural drift worth knowing about if extending this
-  codebase.
-- There's no `tests/` subfolder mirroring the `app/` structure 1:1 (e.g.
-  `tests/services/test_chunker.py`) — tests live flat in `tests/`. Fine at
-  this project's current size, would need reorganizing if it grew much
-  larger.
+injection (`Depends(get_current_user)`) at the API layer only. The parsing
+and chunking logic never had to know a user system existed. The same
+layering is what let the project grow from a single `/` endpoint to six
+full routers (`upload`, `documents`, `auth`, `chat`, `search`, `health`)
+without a rewrite.

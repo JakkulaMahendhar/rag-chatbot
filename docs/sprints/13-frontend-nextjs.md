@@ -1,40 +1,35 @@
 # Frontend Sprint — Next.js UI
 
-## Objective
+## The example at this step
 
-Everything through Sprint 12 was API-only, tested via Swagger and curl.
-This sprint built an actual browser UI — deliberately scoped down from a
-much larger initial spec, based on a real audit of what the backend could
-actually support.
+Everything through Sprint 12 was API-only, testable via Swagger or curl.
+This sprint gives Sarah an actual browser page: somewhere to upload
+`Employee_Leave_Policy.pdf`, watch it process, and type *"How many sick
+leaves do I get per year?"* into a chat box.
 
-## Why the scope was cut down from the original request
+## Why the scope matches what the backend can actually do
 
-The initial ask described a large, enterprise-style platform (chat
-streaming, chat history sidebar, collections/knowledge-bases, dashboard
-analytics, forgot-password). Before writing any UI code, the actual backend
-was audited feature-by-feature, and the scope was **deliberately reduced**,
-documented in `frontend/docs/API-INTEGRATION.md`:
+Before writing any UI code, the backend was checked feature-by-feature,
+and the UI was scoped to match reality rather than build screens for
+features that don't exist yet:
 
-| Cut feature | Real reason (verified in backend code) |
+| Feature | Why it wasn't built |
 |---|---|
-| Chat streaming | `POST /chat` is a single blocking response (Sprint 8/9) — no SSE, no WebSocket exists |
-| Chat history list | Conversation store is in-memory only (Sprint 9) — no listing endpoint, no persistence |
-| Collections/knowledge-bases | No grouping concept anywhere in the document schema |
-| Dashboard stats/analytics | No aggregation endpoints exist |
-| Forgot/reset password | Not in `app/auth/router.py` — only register/login/me exist |
+| Chat streaming | `POST /chat` (Sprint 8/9) is a single blocking response — there's no SSE or WebSocket endpoint to stream from |
+| Chat history list | Conversation storage (Sprint 9) is in-memory only, with no endpoint to list past conversations |
+| Collections / knowledge-bases | No such grouping exists anywhere in the document schema |
+| Dashboard analytics | No aggregation endpoints exist on the backend |
+| Forgot/reset password | Only register/login/me exist in `app/auth/router.py` |
 
-This is a deliberate example of **not building fake functionality** —
-rather than ship UI for features the backend can't actually support (either
-as empty "coming soon" shells, or worse, silently faking data), the scope
-was matched to reality.
+Building UI for any of these would mean either an empty "coming soon"
+shell or, worse, silently fabricated data — the scope was matched to what
+the backend genuinely supports instead.
 
 ## What we built
 
 **Stack:** Next.js 16 (App Router, Turbopack), TypeScript, Tailwind v4,
-shadcn/ui (built on **Base UI** primitives, not Radix — a real, non-obvious
-distinction, see below), TanStack Query, React Hook Form + Zod.
+shadcn/ui (Base UI primitives), TanStack Query, React Hook Form + Zod.
 
-**Structure:**
 ```
 frontend/
 ├── types/           # mirror the real Pydantic schemas, field-for-field
@@ -44,100 +39,43 @@ frontend/
 └── app/(auth)/, app/(dashboard)/   # route groups
 ```
 
-**Pages:** Login, Register, Chat, Documents, Search, Settings — exactly
-matching what the backend genuinely supports.
+**Pages:** Login, Register, Chat, Documents, Search, Settings.
 
-## Real bugs found and fixed while building this (not hypothetical)
+## Classes & libraries used, and why
 
-### 1. Backend data shown incorrectly (two separate instances)
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| **TanStack Query** | Fetches and caches API data, and re-polls it on an interval | Powers the Documents page: after Sarah uploads her PDF, the page polls `GET /documents/14` every few seconds until `status` flips from `"pending"` to `"completed"`, without a manual refresh | Fetching once with plain `fetch()` on page load would show Sarah a stale "Processing..." forever unless she reloads the page herself |
+| `hooks/use-document-filename.ts` | Joins a chat answer's source reference back to the real document list to show the real filename | Chunk metadata (Sprint 4) stores the on-disk UUID storage name, not the name Sarah gave the file — this hook cross-references `document_id` against the documents list (which does have the real name, from Postgres, Sprint 10) | Displaying the raw metadata filename directly would show Sarah a meaningless UUID like `a36ae1fc-...pdf` instead of `Employee_Leave_Policy.pdf` |
+| **Base UI** (via shadcn/ui, not Radix) | The underlying primitive library behind every dropdown, dialog, and menu component | shadcn/ui's generator produced components built on this; its composition API uses a `render` prop instead of Radix's more commonly documented `asChild` | Once discovered, every trigger-wrapping component was written consistently against Base UI's actual API rather than assuming Radix conventions from other tutorials |
+| `output: "export"` (Next.js static export) | Builds the frontend as plain static HTML/CSS/JS with no Node server required | This app has zero server-only features — no API routes, no server actions, no `next/image`, no dynamic route params — confirmed by checking for all of them before choosing this | A standard Next.js server deployment would need a running Node process purely to serve pages that don't actually need server-side rendering, at real ongoing hosting cost |
 
-`SourceReference.filename` and `SearchResult.metadata.filename` both
-return the **on-disk UUID storage name** (Sprint 2's renamed file), not the
-original upload name — because chunk metadata (Sprint 4) was tagged with
-`location.name` (the storage path), never the original filename. Fixed by
-cross-referencing `document_id` against the already-fetched documents list
-(which *does* have the real filename, from Postgres, Sprint 10) —
-`hooks/use-document-filename.ts` — joining two real API responses, not
-inventing data.
+## How it works — Sarah's session, end to end
 
-### 2. A relevance score that would have been actively misleading
+1. Sarah registers and logs in (Sprint 10's JWT flow) — the token is
+   stored and attached to every subsequent API call by `lib/api/`.
+2. She uploads `Employee_Leave_Policy.pdf` on the Documents page. The page
+   shows `status: "pending"`, then polls until the worker (Sprint 12)
+   finishes and it flips to `"completed"`.
+3. She opens the Chat page and types *"How many sick leaves do I get per
+   year?"*
+4. The request goes to `POST /chat`, and the full RAG pipeline (Sprints
+   6–9) runs; the answer *"You are entitled to 12 paid sick leaves per
+   year, accrued at 1 per month"* comes back along with its source.
+5. The chat UI renders the answer and, underneath it, *"Answered using:
+   Employee_Leave_Policy.pdf"* with a relevance score — computed with the
+   same `1 / (1 + distance)` formula the backend itself uses (Sprint 9),
+   reused rather than reinvented, so the number Sarah sees matches what
+   the backend actually calculated.
+6. If Sarah had instead asked something the document doesn't cover, the
+   hallucination guard's *"I don't have enough information"* response
+   (Sprint 9) renders the same way any other answer does — the UI doesn't
+   need special-case logic for it.
 
-An early version of the search UI displayed `score * 100 + "%"` directly.
-Verified by reading `app/services/search.py`: `score` is a **raw Chroma L2
-distance** — lower is better, unbounded — not a 0-100% similarity. Fixed
-using the exact same `1 / (1 + distance)` formula the backend's own
-`hybrid_search.py` already established (Sprint 9), rather than inventing a
-different conversion.
+## Deploying the frontend separately from the backend
 
-### 3. Base UI vs Radix — a real library-version surprise
-
-The installed `shadcn/ui` generator produced components built on **Base
-UI**, not the more commonly-documented Radix primitives. This meant the
-well-known `asChild` prop pattern **doesn't exist** — Base UI uses a
-`render` prop instead. Discovered via a real TypeScript error, confirmed
-by reading the actual generated component source and Base UI's own
-composition docs before fixing every trigger-wrapping component
-consistently.
-
-### 4. A genuine runtime crash: `MenuGroupContext is missing`
-
-`DropdownMenuLabel` was used directly inside `DropdownMenuContent` with no
-`DropdownMenuGroup` wrapper. Base UI's `Menu.GroupLabel` (unlike Radix's
-more lenient label) *strictly requires* a `Menu.Group` ancestor. This
-shipped initially, was caught by the user reporting the actual runtime
-error, then fixed and verified live (registered a user, opened the menu,
-confirmed no crash).
-
-### 5. Mobile drawer not closing on navigation
-
-The nav `Link`'s `onClick` handler for closing the mobile drawer was
-unreliable — raced against Next's own client-side navigation. Fixed by
-reacting to `usePathname()` changing instead (a `useEffect` that closes the
-drawer whenever the route actually changes) — a more robust signal than a
-click-event handler.
-
-## Deployment — a real architecture realization
-
-The app has **zero server-only features** (no API routes, no server
-actions, no `next/image`, no dynamic route params) — confirmed by grepping
-for all of them before making this decision. This means it doesn't need a
-running Node server at all: `output: "export"` in `next.config.ts` produces
-a plain static site, deployable for free (no paid Render web-service
-compute needed for the frontend at all).
-
-**A real bug caught during this exact verification, not just assumed to
-work:** the first local rebuild baked in `http://localhost:8000` instead
-of the intended production URL, because `.env.local` (used for local `npm
-run dev`) takes precedence over `.env.production` in Next.js's env-loading
-order. Confirmed this was a *local-testing-only* artifact — `.env.local`
-is gitignored and won't exist on a clean deployment checkout — by
-temporarily removing it and rebuilding, which correctly produced the
-production URL.
-
-## Positive scenarios
-
-- **Verified live, end to end, against the real running backend
-  (Docker Compose, real Postgres/Chroma/BM25/Gemini):** register → auto-
-  login → session restore → upload → worker processes it → status updates
-  live in the UI → real multi-turn Gemini chat with correct sources → real
-  semantic search → delete. Every one of these was directly observed
-  working, not assumed from code review alone.
-- The hallucination guard's correct "I don't have enough information"
-  behavior (Sprint 9) was directly visible and correctly rendered in the
-  chat UI during real testing.
-
-## Negative scenarios / limitations
-
-- **No automated frontend test suite** (Vitest/Playwright) — the extensive
-  live browser-based verification substituted for it in this build pass;
-  genuine follow-up work, not silently skipped.
-- No page-number citations (inherited limitation from Sprint 3's parsing —
-  the data doesn't exist to show).
-- No chat history, collections, or analytics (deliberately, per the scope
-  cut above).
-- Real-time polling for document status uses TanStack Query's default
-  `refetchIntervalInBackground: false` — a background/inactive browser tab
-  correctly pauses polling (standard, sensible behavior, verified during
-  testing when an automated test tab's `visibilityState` was `"hidden"`),
-  meaning a user who uploads a document and switches away from the tab
-  won't see the status update until they return to it.
+Because the frontend needs no server, it's deployed as a free static site
+— entirely separate from the web/worker/database services in Sprint 12.
+This was a deliberate design goal from the start: the frontend can be
+changed, redeployed, or removed entirely without touching the API or its
+business logic, and vice versa.

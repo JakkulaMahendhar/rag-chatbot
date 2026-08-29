@@ -1,9 +1,10 @@
 # Sprint 2 — Document Upload
 
-## Objective
+## The example at this step
 
-Let a user get a file (PDF/DOCX/TXT) from their computer onto the server,
-safely, before any processing (parsing, chunking, etc.) happens.
+Sarah selects `Employee_Leave_Policy.pdf` on her computer and clicks
+upload. This file explains what happens to that file the moment it reaches
+the server, before any parsing or AI is involved at all.
 
 ## What we built
 
@@ -21,65 +22,31 @@ class StorageService:
         return destination
 ```
 
-**File:** `app/api/upload.py` — validates file extension against an allowlist
-(`.pdf`, `.docx`, `.txt`) *before* accepting the upload.
+**File:** `app/api/upload.py` — checks the file extension against an
+allowlist (`.pdf`, `.docx`, `.txt`) before accepting the upload at all.
 
-## Why we did it this way
+## Classes & libraries used, and why
 
-### Why rename every uploaded file to a UUID?
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| `StorageService.save_file()` | Renames every uploaded file to a random UUID before saving it | If two different employees at Acme Corp both upload a file named `policy.pdf`, storing by original name would let the second upload silently overwrite the first — a real data-loss and cross-user leak risk | Keeping the original filename is simpler, but only works safely if you can guarantee no two users ever pick the same filename, which you can't |
+| Extension **allowlist** (`{".pdf", ".docx", ".txt"}`) in `app/api/upload.py` | Rejects any file type not explicitly expected | Anything not on the list is refused by default — the safer posture | A **blocklist** of dangerous extensions (`.exe`, `.sh`, …) only stops the dangerous types you thought to list; an allowlist doesn't need to know about threats in advance |
+| `UploadFile` (FastAPI/Starlette) | Streams the incoming file to disk instead of loading it fully into memory first | Handles Sarah's PDF (or a much larger one) without holding the whole thing in RAM before it's even validated | Reading `await file.read()` into a single bytes object works for small files but risks memory pressure on larger uploads |
 
-Real scenario this prevents: two different users both upload a file named
-`resume.pdf`. If we stored files by their original name, the second upload
-could silently overwrite the first user's file — a real data-loss and
-security bug (one user could even read another user's document by
-guessing/uploading a same-named file). Renaming to `f"{uuid4()}{extension}"`
-makes every stored filename globally unique, regardless of what the user
-named their file.
+## How it works — Sarah's PDF, step by step
 
-**Real consequence discovered later (see Sprint 9 / bugs doc):** because the
-stored filename is a UUID, not the original name, later code that read
-`filename` from chunk metadata was showing users a UUID like
-`a36ae1fc-236a-4a90-9d7f-6b7cfc693526.txt` instead of their actual
-`quarterly-report.pdf` — a real bug we found and fixed in the frontend by
-joining back to the database's `filename` column (the *original* name is
-stored separately in Postgres, see Sprint 10).
-
-### Why an extension allowlist, not a blocklist?
-
-Blocklisting dangerous extensions (`.exe`, `.sh`, etc.) is a losing game —
-you have to know every dangerous extension in advance. Allowlisting
-(`{".pdf", ".docx", ".txt"}` in `app/api/upload.py`) means anything not
-explicitly expected is rejected by default, which is the safer default.
-
-## How it works — a real walkthrough
-
-1. User selects `employee-handbook.pdf` in the browser.
-2. Frontend sends it as `multipart/form-data` to `POST /upload`.
-3. Backend checks the extension is in `{".pdf", ".docx", ".txt"}` → passes.
-4. `StorageService.save_file()` generates e.g.
-   `f47ac10b-58cc-4372-a567-0e02b2c3d479.pdf` and writes the file to
+1. Sarah selects `Employee_Leave_Policy.pdf` in the browser.
+2. The frontend sends it as `multipart/form-data` to `POST /upload`.
+3. The backend checks the extension is in `{".pdf", ".docx", ".txt"}` →
+   `.pdf` passes.
+4. `StorageService.save_file()` generates a new name, e.g.
+   `f47ac10b-58cc-4372-a567-0e02b2c3d479.pdf`, and writes the file into
    `uploads/` (a Docker volume in production, see Sprint 11).
-5. Returns the saved `Path` object for the next stage (parsing, Sprint 3) to
-   use.
+5. The *original* name Sarah gave it (`Employee_Leave_Policy.pdf`) is kept
+   separately, in Postgres, against her user account (Sprint 10) — the
+   UUID is only ever the name of the file *on disk*.
+6. The saved path is handed to the parser (Sprint 3) as the next step.
 
-## Positive scenarios
-
-- Concurrent uploads from different users never collide (verified: two
-  documents named identically by two different users produced two distinct
-  UUID-named files with no conflict, during live testing in this project).
-- Rejecting unsupported types happens *before* any expensive processing
-  (parsing/embedding) is attempted — fails fast, cheaply.
-
-## Negative scenarios / limitations
-
-- **No file size limit was ever explicitly enforced** at this layer. A
-  user could upload an extremely large file and the server would still
-  attempt to buffer/copy the whole thing. This is a real gap — worth adding
-  a max-size check before this goes to genuine production use with
-  untrusted users.
-- **No virus/malware scanning.** Files are trusted once they pass the
-  extension check. Fine for a personal/portfolio project; a real production
-  system handling arbitrary user uploads would need this.
-- **No duplicate-content detection.** Uploading the exact same PDF twice
-  creates two separate documents, two separate sets of chunks/embeddings —
-  wasted storage and compute, no dedup logic exists.
+Keeping the original filename in Postgres, and only using the UUID for the
+file on disk, is what lets the chat UI later show Sarah "Answered using:
+**Employee_Leave_Policy.pdf**" instead of a meaningless UUID string.

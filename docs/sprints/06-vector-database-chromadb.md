@@ -1,11 +1,12 @@
 # Sprint 6 — Vector Database Integration (ChromaDB)
 
-## Objective
+## The example at this step
 
-Sprint 5 gave us a way to turn text into vectors. Now we need somewhere to
-*store* thousands of these vectors and *search* them efficiently — "given
-this query vector, find the 5 most similar stored vectors" — which is not
-something a regular relational database does natively or fast.
+The sick-leave chunk now exists as a 384-number vector
+(`[-0.0869, -0.0369, ...]`). It needs somewhere to actually live, and a way
+to be found again later when Sarah asks her question — "given this new
+vector, find the stored vectors closest to it" — which a regular
+relational database doesn't do natively or fast.
 
 ## What we built
 
@@ -31,87 +32,40 @@ class VectorStoreService:
             n_results=top_k,
             where={"document_id": document_ids[0]} if document_ids else None,
         )
-        # returns chunks ranked by distance (lower = more similar)
 ```
 
-## Why ChromaDB specifically
+## Classes & libraries used, and why
 
-Real alternatives considered implicitly by the shape of this decision:
-storing raw vectors in Postgres columns and computing similarity manually
-in Python (extremely slow at any real scale — no index structure), or using
-a heavier dedicated vector database (Pinecone, Weaviate) which would add
-external service dependency and cost for a project this size. ChromaDB
-hits a sweet spot: purpose-built for exactly this (fast approximate nearest
-neighbor search via an HNSW index), and can run either embedded (simple) or
-as its own server (for production, see below).
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| **ChromaDB** | Stores vectors alongside their original text and metadata, and answers "which stored vectors are closest to this one?" using an HNSW index | Purpose-built for exactly this — fast approximate nearest-neighbor search — and can run either embedded (simple, single-process) or as its own server | Storing vectors as Postgres columns and comparing them by hand in Python has no real index structure and gets slow as the number of chunks grows; a heavier managed vector database (Pinecone, Weaviate) would add an external paid dependency this project doesn't need |
+| `VectorStoreService.add_chunks()` | Writes a chunk's text, vector, and metadata into ChromaDB together in one call | One call stores everything needed to both find the chunk later *and* show Sarah where the answer came from | Storing the vector and the original text/metadata separately would need two round trips and a way to keep them in sync |
+| `collection.query(...)` | Given a query vector, returns the closest stored vectors, ranked by distance | This is the exact operation "find the chunk most similar in meaning to Sarah's question" needs | — |
+| `chromadb.HttpClient` (server mode) | Both the web app and the background worker connect to ChromaDB over HTTP instead of opening the storage files directly | Once there are two separate processes (web + worker, Sprint 12) touching the same data, they need to go through one server rather than both opening the same files on disk | The simpler embedded mode (`PersistentClient`, opening files directly) works fine for a single process, but breaks once a second process needs to write at the same time — see Sprint 12 for the real bug this caused |
 
-## A real architectural evolution — this changed mid-project
+## How it works — storing and finding Sarah's chunk
 
-**Originally** (this sprint), ChromaDB ran *embedded* —
-`chromadb.PersistentClient(path=...)` directly inside the web app process,
-reading/writing files on local disk. This is the simplest possible setup
-and worked fine for a single-process application.
-
-**Later** (Sprint 12), this became a real, reproduced bug: once the
-application was split into a separate web process and worker process (for
-the async upload pipeline), both processes were independently opening
-embedded ChromaDB storage handles against the *same* directory. ChromaDB's
-embedded client isn't designed for concurrent multi-process access — this
-produced a genuine, repeatedly-reproduced error:
-`chromadb.errors.InternalError: Error executing plan: Internal error: Error finding id`.
-
-The fix (documented in full in Sprint 12's doc): ChromaDB now runs as its
-**own server** (a separate Docker container, `chromadb/chroma:1.5.9`), and
-both the web app and worker connect to it over HTTP via
-`chromadb.HttpClient` instead of touching the storage directly. This is
-exactly the kind of thing that only surfaces once you actually run the
-real multi-process architecture — good to know if you build a similar
-system starting from a single-process design.
-
-## How it works — a real walkthrough
-
-Given a stored chunk with embedding `[-0.0869, -0.0369, ...]` and metadata
-`{"document_id": "14", "user_id": "7", ...}`:
-
-1. `add_chunks()` calls `collection.upsert()` — ChromaDB stores the vector,
-   the original text, and the metadata together, indexed for fast search.
-2. Later, a user asks a question. The question itself gets embedded
-   (Sprint 5's `generate_query_embedding()`), producing a query vector.
+1. `add_chunks()` calls `collection.upsert()` for chunk `"14-1"`: ChromaDB
+   stores its vector, its original text (*"All full-time employees are
+   entitled to 12 paid sick leaves..."*), and its metadata
+   (`{"document_id": "14", "user_id": "7", ...}`) together, indexed for
+   fast search.
+2. Weeks later, Sarah asks: *"How many sick leaves do I get per year?"*
+   Her question is embedded the same way (Sprint 5), producing a query
+   vector.
 3. `collection.query(query_embeddings=[query_vector], n_results=3)` asks
-   ChromaDB: "of everything stored, which 3 vectors are closest to this
-   one?" — using L2 (Euclidean) distance under the hood.
-4. Results come back **ranked by distance, lowest first** — this exact
-   detail matters and caused a real, documented frontend bug (see Sprint
-   13/frontend doc and the bugs doc): the raw distance is *not* a 0-100%
-   similarity score, and a naive `score * 100` display was actively
-   misleading before being caught and fixed.
-5. The `where={"document_id": ...}` filter is what makes per-user document
-   scoping possible — search results are filtered to only chunks belonging
-   to documents the requesting user actually owns (see Sprint 10).
+   ChromaDB: "of everything stored for Sarah's documents, which 3 vectors
+   are closest to this one?" — using L2 (Euclidean) distance under the
+   hood.
+4. Chunk `"14-1"` comes back as the closest match, because its vector was
+   already numerically close to any vector representing "how much sick
+   leave do I have" — the model doesn't need Sarah to use the document's
+   exact wording.
+5. The `where={"document_id": ...}` filter is what makes per-user scoping
+   possible — Sarah's search is restricted to only the chunks belonging to
+   documents she actually owns (Sprint 10).
 
-## Positive scenarios
-
-- Verified via direct testing in this project: a document containing the
-  text "Artificial Intelligence (AI) is a branch of computer science..."
-  correctly returns as the top result for the query "What is Artificial
-  Intelligence?" with the closest vector distance among all stored chunks.
-- The HttpClient migration was stress-tested with the tightest realistic
-  race condition (a search request fired the instant the worker was
-  writing a new vector) and held up correctly — no errors, correct ranked
-  results for both the new and existing documents.
-
-## Negative scenarios / limitations
-
-- **The original embedded-client architecture had a real, reproducible
-  concurrency bug** (detailed above and in the bugs doc) — worth knowing if
-  you ever see "Error finding id" from ChromaDB: it's very likely a
-  multi-process access issue, not data corruption.
-- **No persistent disk on Render's free tier** (see Sprint 12) means the
-  entire vector index is wiped on every redeploy or scale-to-zero cold
-  start in the current free-tier production deployment — a real, currently
-  unresolved production limitation, not fixed as of this writing.
-- Distance-based filtering (`vector_distance_threshold` in config) is a
-  single global cutoff — it doesn't adapt per query or per document type,
-  so it can be either too permissive (irrelevant results) or too strict
-  (missing relevant-but-differently-worded content) depending on the
-  specific question.
+Results come back ranked by **distance** (lower = closer, i.e. more
+similar) — not a 0–100% score. That distance value is converted into
+something human-readable for display in Sprint 9 and reused as-is by the
+frontend in Sprint 13, so it's only ever calculated in one place.

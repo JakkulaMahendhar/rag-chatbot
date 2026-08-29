@@ -1,12 +1,11 @@
 # Sprint 7 — Semantic Retrieval
 
-## Objective
+## The example at this step
 
-Sprint 6 gave us the ability to store and query vectors. This sprint turns
-that into an actual usable service: take a user's typed question, and
-return the most relevant stored chunks — plus refactor the configuration
-and retrieval logic into a clean, reusable service layer (Sprints 7.1/7.2 in
-the original roadmap).
+Sarah types: *"How many sick leaves do I get per year?"* This step turns
+that question into the actual set of chunks worth answering from — and
+just as importantly, decides when there's *nothing* relevant to answer
+from, so the system doesn't guess.
 
 ## What we built
 
@@ -23,84 +22,39 @@ class RetrievalService:
         # filters by vector_distance_threshold before returning
 ```
 
-**File:** `app/core/config.py` — centralized, typed configuration via
-Pydantic Settings (Sprint 7.2's "centralize application configuration"):
+**File:** `app/core/config.py` — one typed, centralized settings object:
 
 ```python
 class Settings(BaseSettings):
     top_k_vector: int = 10
     vector_distance_threshold: float = 0.75   # cosine distance cutoff
-    ...
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
 ```
 
-## Why a distance *threshold*, not just top-K
+## Classes & libraries used, and why
 
-Real problem: if you always return the "top 5" results no matter what,
-irrelevant results get returned when a document genuinely has *nothing*
-relevant to a question (e.g., asking about "refund policy" against a
-document about "office locations"). The top 5 closest vectors would still
-be returned even though none of them are actually relevant — just the
-*least irrelevant* of a bad set. `vector_distance_threshold` sets a hard
-cutoff: results past this distance are excluded even if it means returning
-fewer than `top_k` results, or zero. This exact mechanism is what allows
-the later hallucination guard (Sprint 9) to correctly say "I don't have
-enough information" instead of confidently answering from irrelevant
-context.
+| Class / library | What it does | Why we used it | How it compares to the alternative |
+|---|---|---|---|
+| `RetrievalService.retrieve()` | Asks ChromaDB for the closest chunks to Sarah's question, then drops any that are too far away to be genuinely relevant | Separates "how do we search" from "what do we do with the result," so the rest of the RAG pipeline just calls one method | Calling `vector_store.search()` directly from every place that needs a chunk would spread the threshold-filtering logic across the codebase instead of keeping it in one place |
+| `vector_distance_threshold` (0.75) | A hard cutoff — a chunk further than this distance from the question is excluded, even if it's the closest thing available | If Sarah asked about something the document simply doesn't cover (e.g. "what's the office parking policy?"), always returning the "top 5 closest" chunks anyway would hand the LLM the *least irrelevant* junk and risk a made-up answer | Returning a fixed top-K regardless of distance means there's no way to say "nothing here is actually relevant" — this threshold is exactly what lets the hallucination guard (Sprint 9) correctly answer "I don't have enough information" |
+| `Settings` (Pydantic Settings) | One typed object holding every tunable value (`chunk_size`, `top_k_vector`, `vector_distance_threshold`, …), loaded from `.env` | The exact same code runs against a local Postgres and a Render-hosted Postgres purely by changing `.env` — and Pydantic validates every value's type at startup, so a bad `.env` value fails immediately with a clear error instead of misbehaving deep in some unrelated code path later | Hardcoded values scattered across files mean changing one tunable setting (like the weighting between vector and keyword search, Sprint 9) means hunting through multiple files instead of editing one class |
 
-## Why centralize configuration (Sprint 7.2)
+## How it works — retrieving for Sarah's question
 
-Before this, settings were scattered as hardcoded values across files.
-Centralizing into one `Settings` class, loaded from `.env`, gave three real
-benefits, each later exercised concretely in this project:
-1. **Environment-specific behavior without code changes** — the exact same
-   code runs against `localhost` Postgres locally and a Render-hosted
-   Postgres in production, purely by changing `.env` values.
-2. **A single source of truth for tuning.** When hybrid search (Sprint 9)
-   needed weighting between vector and keyword results, `vector_weight` /
-   `bm25_weight` were added here, not scattered through the codebase.
-3. **Validation for free** — Pydantic Settings validates types at startup
-   (e.g., `chunk_size: int` — if `.env` has a non-numeric value, the app
-   fails to start immediately with a clear error, rather than failing
-   confusingly deep in some unrelated code path later).
-
-## How it works — a real walkthrough
-
-User asks: *"What is the leave policy?"*
-
-1. The question is embedded into a query vector (Sprint 5).
+1. Sarah's question is embedded into a query vector (Sprint 5).
 2. `RetrievalService.retrieve()` asks ChromaDB for the top 10
-   (`top_k_vector`) closest chunks.
-3. Each result's distance is compared against `vector_distance_threshold`
-   (0.75). A chunk about leave policy might have distance `0.3` (well
-   within threshold, kept). A chunk about an unrelated topic might have
-   distance `0.9` (excluded).
-4. Only the chunks that pass the threshold move forward to the next stage
-   (hybrid search combination, reranking — Sprint 9).
+   (`top_k_vector`) closest chunks across her documents.
+3. Chunk `"14-1"` (the sick-leave sentence) comes back with a small
+   distance, e.g. `0.3` — well within the `0.75` threshold, so it's kept.
+4. A chunk from an unrelated part of the handbook (say, an office-hours
+   paragraph) might come back with distance `0.9` — past the threshold,
+   so it's dropped, even though it was technically one of the "top 10
+   closest."
+5. Only the chunks that pass the threshold move forward to hybrid search
+   and reranking (Sprint 9).
 
-## Positive scenarios
-
-- Correctly distinguishes relevant from irrelevant content when a document
-  genuinely doesn't cover the asked topic — verified live: asking "Can you
-  give an example application?" against a document that only defined AI
-  (no examples) correctly triggered "I don't have enough information," not
-  a fabricated answer, because retrieval + the hallucination guard (Sprint
-  9) worked together correctly.
-
-## Negative scenarios / limitations
-
-- The threshold (`0.75`) is a single global value, not adaptive — a
-  genuinely relevant but oddly-phrased chunk near the boundary might get
-  excluded, or an irrelevant-but-topically-adjacent chunk might get
-  included. Real embedding-based retrieval always has this fuzzy-boundary
-  characteristic; there's no tuning-free solution.
-- `RetrievalService`'s constructor signature changed during later
-  development (to accept a database session for per-user filtering,
-  Sprint 10) without the corresponding test being updated — a real,
-  currently-existing broken test (`tests/test_retrieval.py`, confirmed
-  failing with `TypeError`) that was found, diagnosed, and intentionally
-  left unfixed as out-of-scope for the sprint that found it (see the CI
-  documentation in Sprint 11 for how this was handled — excluded from the
-  automated test run with the reason documented, not silently ignored).
+This is the mechanism that makes the difference between *"the system found
+something loosely related and guessed"* and *"the system found the actual
+answer, or correctly said it doesn't have one."*

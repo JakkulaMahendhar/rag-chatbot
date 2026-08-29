@@ -2,63 +2,70 @@
 
 ## What this project actually is
 
-A production-style **Retrieval-Augmented Generation (RAG)** system: users upload
-their own documents (PDF/DOCX/TXT), the system extracts and indexes the text,
-and users can then ask natural-language questions that get answered **using
-only their own uploaded content** — not the LLM's general training knowledge.
+A **Retrieval-Augmented Generation (RAG)** system: users upload their own
+documents (PDF/DOCX/TXT), the system extracts and indexes the text, and
+users can then ask natural-language questions that get answered **using
+only their own uploaded content** — not the LLM's general training
+knowledge.
 
-Real example of the core problem this solves:
+## The example used in every file in this folder
 
-> Gemini (the LLM this project uses) has no idea what's in your company's
-> internal HR policy document, because that document was never part of its
-> training data, and even if you pasted the whole document into a prompt every
-> time, it would be slow, expensive, and hit context-length limits fast for
-> large document sets. RAG solves this by: finding *only the relevant
-> paragraphs* from your documents for a given question, and feeding *just
-> those paragraphs* to the LLM alongside the question.
+> **Sarah**, an employee at **Acme Corp**, uploads `Employee_Leave_Policy.pdf`.
+> Its Section 2 says: *"All full-time employees are entitled to 12 paid
+> sick leaves per calendar year, accrued monthly at 1 leave per month."*
+> Sarah then asks the chatbot: **"How many sick leaves do I get per
+> year?"**
+
+Gemini, the LLM this project uses, has never seen Acme Corp's internal HR
+policy — that document was never part of its training data. Pasting the
+whole document into every prompt would also be slow and eventually hit
+context-length limits once a company has hundreds of documents. RAG solves
+this by finding *only the one relevant paragraph* out of the whole document
+set, and handing *just that paragraph* to the LLM alongside Sarah's
+question.
 
 ## The complete pipeline, end to end
 
 ```
                     ┌─────────────┐
-                    │   Browser    │  (Next.js frontend, Sprint "Frontend")
+                    │   Browser    │  Sarah's chat + upload UI (Sprint 13)
                     └──────┬──────┘
                            │ HTTPS / JSON
                            ▼
                     ┌─────────────┐
-                    │   FastAPI    │  (app/main.py)
+                    │   FastAPI    │  app/main.py
                     │   Web App    │
                     └──────┬──────┘
              ┌─────────────┼─────────────────┐
              ▼             ▼                 ▼
       ┌───────────┐  ┌───────────┐   ┌──────────────┐
       │ PostgreSQL │  │  Worker    │   │  Gemini API   │
-      │ (users,    │  │  Process   │   │  (LLM calls)  │
-      │ documents) │  │(Sprint 12) │   └──────────────┘
-      └───────────┘  └─────┬──────┘
-                            │ writes vectors
-                            ▼
+      │ (Sarah's   │  │  Process   │   │  (generates    │
+      │ account +  │  │(Sprint 12) │   │  the answer)   │
+      │ document)  │  └─────┬──────┘   └──────────────┘
+      └───────────┘        │ parses, chunks, embeds
+                            ▼          Sarah's PDF
                     ┌───────────────┐
-                    │ ChromaDB      │  (Sprint 6, later
-                    │ Server        │   moved to its own
-                    │ (vectors)     │   server, Sprint 12)
+                    │ ChromaDB      │  stores the sick-leave
+                    │ Server        │  sentence as a vector
                     └───────────────┘
                             │
                     ┌───────────────┐
-                    │ BM25 Index    │  (keyword search,
-                    │ (local files) │   Sprint 9)
+                    │ BM25 Index    │  also indexes it by
+                    │ (keyword)     │  exact keyword ("sick leaves")
                     └───────────────┘
 ```
 
-## Why it was built this way — the core engineering decisions
+## Why each major building block was chosen, and what it's for
 
-| Decision | Why |
-|---|---|
-| **Hybrid search** (vector + keyword), not just vector search | Pure vector (semantic) search misses exact keyword matches sometimes (e.g. product codes, names). Pure keyword search misses paraphrased questions. Combining both (Sprint 9) covers more real questions correctly. |
-| **Separate background worker for document processing** | Uploading and processing a document (parsing, chunking, embedding — can take 40+ seconds for large files) inside one HTTP request risks timeouts and blocks the server. Sprint 12 split this into "accept fast, process in background." |
-| **PostgreSQL for structured data, ChromaDB for vectors** | These are fundamentally different data shapes. Postgres is excellent at relational data (who owns what, status tracking) with ACID guarantees. ChromaDB is purpose-built for fast approximate-nearest-neighbor vector search, which Postgres isn't (without extensions). Using the right tool for each job. |
-| **JWT auth, not session cookies** | The frontend and backend are genuinely separate applications (different deploy targets, different hosts) — a stateless bearer token is the standard, simplest fit for that shape, versus server-side session state that would need sticky infrastructure. |
-| **Docker Compose for local dev, matching what's deployed** | "Works on my machine" bugs happen when local dev doesn't match production. Running the exact same containers locally that get deployed (Sprint 11) catches integration bugs (like the ChromaDB race condition, see Sprint 12/bugs doc) *before* they hit production. |
+| Class / library / service | What it does | Why we used it | How it compares to the obvious alternative |
+|---|---|---|---|
+| **FastAPI** | Receives Sarah's upload and chat requests over HTTP | Async-native (doesn't block while Gemini or ChromaDB responds), automatic request validation via Pydantic, built-in OpenAPI docs | Flask is simpler but synchronous by default — every waiting network call (Gemini, Chroma) would block the whole server; FastAPI keeps handling other users' requests while Sarah's is waiting |
+| **PostgreSQL** | Stores Sarah's account and her document's status/filename | Relational data with real ownership relationships ("this document belongs to this user") and ACID guarantees | A plain file or NoSQL store would need to reinvent relational integrity by hand for something Postgres already does correctly |
+| **ChromaDB** | Stores the sick-leave sentence as a vector, finds it again by meaning | Purpose-built for fast nearest-neighbor vector search, which Postgres doesn't do natively | Storing vectors as Postgres columns and comparing them in Python would work for a handful of chunks, but has no real index — it gets slow fast as documents pile up |
+| **A separate background worker** | Actually parses, chunks, and embeds Sarah's PDF | Keeps the upload request itself fast (it just saves the file and returns), so the browser never sits on a 30–40 second HTTP call | Doing the heavy work inside the same request that receives the upload risks the request timing out on a slow connection or a large PDF |
+| **JWT tokens** | Prove every request claiming to be Sarah actually is Sarah | Stateless — the frontend and backend are two separate deployments, so a token that's self-verifying (no shared session store) is the natural fit | Server-side session cookies would need both services to share session state, which adds infrastructure for no real benefit here |
+| **Docker Compose (local) / Docker (production)** | Runs Postgres, ChromaDB, the web app, and the worker as the same containers everywhere | Local testing behaves the same way production does, so a bug like "the worker and web app fighting over the same ChromaDB file" (see Sprint 12) shows up on a laptop, not for a real user | Running the app with `uvicorn --reload` on bare metal locally, then something different in production, hides exactly this kind of bug until it's live |
 
 ## Technology stack (verified against `requirements.txt` / `package.json`)
 
@@ -66,24 +73,24 @@ Real example of the core problem this solves:
 | Library | Version | Purpose |
 |---|---|---|
 | FastAPI | 0.139.0 | Web framework, API routing, request validation |
-| Uvicorn | 0.51.0 | ASGI server that actually runs FastAPI |
+| Uvicorn | 0.51.0 | ASGI server that runs FastAPI |
 | Pydantic | 2.13.4 | Data validation, settings management |
 | SQLAlchemy | 2.0.51 | ORM — Python objects ↔ Postgres rows, async |
-| asyncpg | 0.31.0 | Async Postgres driver (used by the web app) |
-| psycopg2-binary | 2.9.12 | Sync Postgres driver (used by Alembic migrations) |
-| Alembic | 1.18.5 | Database schema migrations (version-controlled schema changes) |
-| ChromaDB | 1.5.9 | Vector database — stores embeddings, does similarity search |
-| sentence-transformers | 5.6.0 | Generates embeddings (turns text into vectors) |
-| torch | 2.13.0 | The actual ML tensor library underneath sentence-transformers |
-| transformers | 5.13.1 | Hugging Face model loading (used by sentence-transformers + reranker) |
+| asyncpg | 0.31.0 | Async Postgres driver (web app) |
+| psycopg2-binary | 2.9.12 | Sync Postgres driver (Alembic migrations) |
+| Alembic | 1.18.5 | Database schema migrations |
+| ChromaDB | 1.5.9 | Vector database |
+| sentence-transformers | 5.6.0 | Generates embeddings |
+| torch | 2.13.0 | ML tensor library underneath sentence-transformers |
+| transformers | 5.13.1 | Hugging Face model loading |
 | rank-bm25 | 0.2.2 | Keyword search algorithm (BM25) |
-| langchain-text-splitters | 1.1.2 | Splits long documents into smaller chunks intelligently |
+| langchain-text-splitters | 1.1.2 | Splits documents into chunks |
 | PyMuPDF (fitz) | 1.28.0 | Extracts text from PDF files |
-| python-docx | 1.2.0 | Extracts text from Word (.docx) files |
+| python-docx | 1.2.0 | Extracts text from Word files |
 | google-generativeai | 0.8.6 | Gemini LLM client |
-| ollama | 0.6.2 | Ollama LLM client (local-model alternative to Gemini) |
+| ollama | 0.6.2 | Ollama LLM client (local-model alternative) |
 | passlib + bcrypt | 1.7.4 / 4.1.3 | Password hashing |
-| python-jose | 3.5.0 | JWT token creation/verification |
+| python-jose | 3.5.0 | JWT creation/verification |
 | pytest + pytest-asyncio | 9.1.1 / 1.4.0 | Testing |
 
 ### Frontend
@@ -92,8 +99,8 @@ Real example of the core problem this solves:
 | Next.js 16 (App Router, Turbopack) | React framework, routing, build tooling |
 | TypeScript | Type safety |
 | Tailwind CSS v4 | Styling |
-| shadcn/ui (Base UI primitives) | Accessible UI component library |
-| TanStack Query | Server-state management (API data fetching/caching/polling) |
+| shadcn/ui (Base UI primitives) | Accessible UI components |
+| TanStack Query | Server-state fetching/caching/polling |
 | React Hook Form + Zod | Form handling and validation |
 | next-themes | Light/dark/system theme switching |
 
@@ -104,29 +111,22 @@ Real example of the core problem this solves:
 | GitHub Actions | CI — runs tests automatically on every push |
 | Render | Cloud hosting (web app, worker, database, static frontend) |
 
-## The AI/ML models actually used (real model names, not generic labels)
+## The AI/ML models actually used
 
 | Model | Used for | Where |
 |---|---|---|
-| `all-MiniLM-L6-v2` | Turning text into 384-dimension embedding vectors | `app/core/ai_registry.py`, every chunk and every search query |
-| `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scoring retrieved chunks for relevance (reranking) | `app/services/reranker.py` |
-| `gemini-2.5-flash` | Generating the final natural-language answer | `app/services/llm/gemini.py` |
-| (configurable) e.g. `llama3.1` via Ollama | Alternative to Gemini, runs locally, no API cost | `app/services/llm/ollama.py` |
+| `all-MiniLM-L6-v2` | Turns text (like the sick-leave sentence) into a 384-number vector | `app/core/ai_registry.py` |
+| `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores retrieved chunks for true relevance to Sarah's question | `app/services/reranker.py` |
+| `gemini-2.5-flash` | Writes the final answer to Sarah | `app/services/llm/gemini.py` |
+| `llama3.1` (via Ollama, configurable) | Local alternative to Gemini, no API cost | `app/services/llm/ollama.py` |
 
 ## How to read the rest of this documentation
 
-Each file in `docs/sprints/` covers one phase of development, in the order it
-was actually built, matching the git commit history and the README's own
-sprint numbering. Each file includes:
+Each file covers one phase of development, in the order it was actually
+built. Each one explains, using Sarah's example at that exact step:
+**what class or library was used, what it does, why it was chosen over the
+obvious alternative, and how the flow works concretely.**
 
-- **What we built** — the actual feature, with real file paths
-- **Why we built it this way** — the reasoning, alternatives considered
-- **How it works** — a concrete example walked through step by step
-- **What works well** (positive scenarios) — verified, not assumed
-- **What doesn't / limitations** (negative scenarios) — honest gaps, edge
-  cases, and real bugs found during development, not hidden
-
-See `14-bugs-and-lessons-learned.md` for a consolidated list of every real,
-reproduced bug found during this project and exactly how it was diagnosed
-and fixed — this is often the most instructive file for understanding how
-the system actually behaves under real conditions, not just the happy path.
+See [14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) for a
+consolidated list of every real bug found while building this, and exactly
+how each one was fixed.

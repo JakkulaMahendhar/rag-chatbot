@@ -1,49 +1,62 @@
 # Complete Sprint-by-Sprint Documentation
 
-A full, honest technical history of this RAG chatbot's development — what
-was built, why, how it actually works (with real examples), and what
-genuinely broke along the way, verified rather than assumed. Written after
+A clear technical walkthrough of this RAG chatbot's development — what was
+built, **why that specific class or library was chosen**, what it actually
+does, and how it compares to the obvious alternatives. Written after
 completing the full application (backend + frontend + deployment), based on
-a systematic re-verification of the actual codebase, not from memory alone.
+a direct re-read of the real code.
+
+## The one example used in every file
+
+To keep the explanation concrete instead of abstract, every file in this
+folder traces **the same real scenario** end to end:
+
+> **Sarah**, an employee at **Acme Corp**, uploads a file called
+> `Employee_Leave_Policy.pdf`. Page 2 of that file says:
+> *"All full-time employees are entitled to 12 paid sick leaves per
+> calendar year, accrued monthly at 1 leave per month."*
+> Later, Sarah opens the chatbot and asks:
+> **"How many sick leaves do I get per year?"**
+> The system correctly answers: *"You are entitled to 12 paid sick leaves
+> per year, accrued at 1 per month."*
+
+Each file below picks up this exact example at the point relevant to that
+sprint — the same file name, the same sentence, the same question — so you
+can follow one request all the way from upload to answer across the whole
+documentation set.
 
 ## Reading order
 
-| # | File | Covers |
+| # | File | What it explains, using Sarah's example |
 |---|---|---|
-| 0 | [00-overview-and-architecture.md](00-overview-and-architecture.md) | Full architecture diagram, complete tech stack with real versions, the AI models actually used |
-| 1 | [01-project-setup.md](01-project-setup.md) | Backend project structure, layered architecture |
-| 2 | [02-document-upload.md](02-document-upload.md) | File upload, storage, UUID renaming |
-| 3 | [03-document-parsing.md](03-document-parsing.md) | PDF/DOCX/TXT text extraction (PyMuPDF, python-docx) |
-| 4 | [04-chunking-and-storage.md](04-chunking-and-storage.md) | Intelligent text splitting (LangChain), chunk metadata |
-| 5 | [05-embeddings-and-ai-registry.md](05-embeddings-and-ai-registry.md) | Embedding generation (`all-MiniLM-L6-v2`), the singleton pattern |
-| 6 | [06-vector-database-chromadb.md](06-vector-database-chromadb.md) | ChromaDB integration, embedded → server architecture evolution |
-| 7 | [07-semantic-retrieval.md](07-semantic-retrieval.md) | Retrieval service, distance thresholds, centralized config |
-| 8 | [08-llm-integration.md](08-llm-integration.md) | Gemini + Ollama, the provider abstraction pattern |
-| 9 | [09-rag-pipeline-and-hybrid-search.md](09-rag-pipeline-and-hybrid-search.md) | Hybrid search, reranking, conversation memory, the hallucination guard |
-| 10 | [10-authentication-and-multiuser.md](10-authentication-and-multiuser.md) | JWT auth, PostgreSQL, per-user document isolation, the bcrypt bug |
-| 11 | [11-production-engineering-docker-ci.md](11-production-engineering-docker-ci.md) | Docker, GitHub Actions CI, the `libgomp1` and async-test bugs |
-| 12 | [12-deployment-and-worker-queue.md](12-deployment-and-worker-queue.md) | Render deployment, background worker, **the ChromaDB concurrency bug** (the biggest single bug in this project) |
-| 13 | [13-frontend-nextjs.md](13-frontend-nextjs.md) | The Next.js UI, scope decisions, real frontend bugs found and fixed |
-| 14 | [14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) | **Consolidated index of every real bug found across the whole project** — start here if you only read one file |
+| 0 | [00-overview-and-architecture.md](00-overview-and-architecture.md) | The whole system in one diagram, and where each piece sits |
+| 1 | [01-project-setup.md](01-project-setup.md) | Why the backend is split into layers, and how Sarah's request moves through them |
+| 2 | [02-document-upload.md](02-document-upload.md) | How `Employee_Leave_Policy.pdf` gets safely onto the server |
+| 3 | [03-document-parsing.md](03-document-parsing.md) | How the PDF's text is extracted with PyMuPDF |
+| 4 | [04-chunking-and-storage.md](04-chunking-and-storage.md) | How the extracted text is split so the sick-leave sentence stays intact |
+| 5 | [05-embeddings-and-ai-registry.md](05-embeddings-and-ai-registry.md) | How that chunk becomes a 384-number vector |
+| 6 | [06-vector-database-chromadb.md](06-vector-database-chromadb.md) | Where that vector is stored, and how it's found again |
+| 7 | [07-semantic-retrieval.md](07-semantic-retrieval.md) | How Sarah's question is matched back to the right chunk |
+| 8 | [08-llm-integration.md](08-llm-integration.md) | How Gemini turns the matched chunk into a real sentence |
+| 9 | [09-rag-pipeline-and-hybrid-search.md](09-rag-pipeline-and-hybrid-search.md) | How keyword search, reranking, and the hallucination check all combine on this one question |
+| 10 | [10-authentication-and-multiuser.md](10-authentication-and-multiuser.md) | Why only Sarah can ever see or query her own document |
+| 11 | [11-production-engineering-docker-ci.md](11-production-engineering-docker-ci.md) | How this whole flow runs identically in Docker and is tested in CI |
+| 12 | [12-deployment-and-worker-queue.md](12-deployment-and-worker-queue.md) | How Sarah's upload is processed in the background, in production |
+| 13 | [13-frontend-nextjs.md](13-frontend-nextjs.md) | How Sarah actually sees and uses all of this in a browser |
+| 14 | [14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) | Every real bug hit while building this exact flow, and the actual fix |
 
 ## How each file is structured
 
-Every file follows the same format:
-- **Objective** — what problem this sprint solved, and why it mattered at
-  that point in the project
-- **What we built** — real file paths, real code excerpts
-- **Why we built it this way** — the actual reasoning, alternatives that
-  were implicitly or explicitly rejected
-- **How it works** — a concrete example walked through step by step, using
-  real data from this project's own testing wherever possible
-- **Positive scenarios** — what genuinely works, verified through direct
-  testing during this project, not assumed
-- **Negative scenarios / limitations** — honest gaps, edge cases, and real
-  bugs, including ones that are still unresolved as of this writing
+- **The example at this step** — where Sarah's document/question is right
+  now in the pipeline
+- **What we built** — the real class/file involved
+- **Classes & libraries used, and why** — a table: what each one does, the
+  concrete benefit of using it, and how it compares to the obvious
+  alternative
+- **How it works** — Sarah's example walked through this exact step
 
 ## The single most important file, if you only read one
 
-[14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) — because
-software that "works" in a demo and software that's been genuinely stress-
-tested under real, concurrent, production-like conditions are different
-things, and this file is the honest record of the gap between those two.
+[14-bugs-and-lessons-learned.md](14-bugs-and-lessons-learned.md) — the
+consolidated list of every real bug found while building this pipeline,
+what caused it, and exactly how it was fixed.
