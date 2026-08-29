@@ -50,6 +50,13 @@ frontend/
 | **Base UI** (via shadcn/ui, not Radix) | The underlying primitive library behind every dropdown, dialog, and menu component | shadcn/ui's generator produced components built on this; its composition API uses a `render` prop instead of Radix's more commonly documented `asChild` | Once discovered, every trigger-wrapping component was written consistently against Base UI's actual API rather than assuming Radix conventions from other tutorials |
 | `output: "export"` (Next.js static export) | Builds the frontend as plain static HTML/CSS/JS with no Node server required | This app has zero server-only features — no API routes, no server actions, no `next/image`, no dynamic route params — confirmed by checking for all of them before choosing this | A standard Next.js server deployment would need a running Node process purely to serve pages that don't actually need server-side rendering, at real ongoing hosting cost |
 | `AnswerQualityBadge` (`components/chat/answer-quality-badge.tsx`) | Renders the backend's `search_evaluation.quality` label (`Excellent`/`Good`/`Weak`) as a colored badge next to each answer, with the match percentage | The backend (Sprint 9's `SearchEvaluator`) had graded every answer's source match since it was built, but no UI ever showed it to Sarah — added after live testing showed there was no way to tell a strong answer from a borderline one at a glance | Showing the raw `best_score` number (e.g. `0.765`) would mean nothing to Sarah without context; the color-coded label with a percentage reads instantly |
+| `llmProviderStorage` (`lib/llm-provider.ts`) + `useLlmProvider` hook | Reads/writes Sarah's Ollama-vs-Gemini choice in `localStorage`, and a Settings page card to change it | Sprint 8's `/chat` endpoint accepts a per-request `llm_provider` field, but something has to decide what to send — this is the UI for that decision, saved the same way the auth token already is | A dropdown re-fetched from the server on every page load would need a new API call and a place to store the preference server-side; `localStorage` is enough for a per-browser convenience like this one |
+
+**Settings page — AI Model card:** two buttons, Ollama (default,
+highlighted) and Gemini, styled identically to the existing Appearance
+card. Selecting one writes it to `localStorage`; `useChat`'s
+`sendMessage()` reads it fresh on every send, so Sarah can switch
+mid-conversation without reloading the page.
 
 ## How it works — Sarah's session, end to end
 
@@ -76,6 +83,13 @@ frontend/
    hallucination guard's *"I don't have enough information"* response
    (Sprint 9) renders the same way any other answer does — the UI doesn't
    need special-case logic for it.
+7. If Sarah opens Settings and switches **AI Model** to Gemini first, her
+   next question is answered by `gemini-3.6-flash` instead of the local
+   Ollama model — no reload needed, the choice is read fresh from
+   `localStorage` on send. If the server has no Gemini API key configured,
+   the same error-bubble UI that already exists for network failures
+   shows the backend's exact message instead — no special-case error
+   handling needed for this either.
 
 ## Deploying the frontend separately from the backend
 

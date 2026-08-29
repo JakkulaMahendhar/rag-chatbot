@@ -117,7 +117,7 @@ question.
 |---|---|---|
 | `all-MiniLM-L6-v2` | Turns text (like the sick-leave sentence) into a 384-number vector | `app/core/ai_registry.py` |
 | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores retrieved chunks for true relevance to Sarah's question | `app/services/reranker.py` |
-| `gemini-2.5-flash` | Writes the final answer to Sarah | `app/services/llm/gemini.py` |
+| `gemini-3.6-flash` | Writes the final answer to Sarah | `app/services/llm/gemini.py` |
 | `llama3.1` (via Ollama, configurable) | Local alternative to Gemini, no API cost | `app/services/llm/ollama.py` |
 
 ## How to read the rest of this documentation

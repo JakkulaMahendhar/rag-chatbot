@@ -43,24 +43,27 @@ approach it replaced.
 | 19 | `test_retrieval.py` fails with `TypeError` | `RetrievalService`'s constructor signature changed (Sprint 10, to accept a DB session) without updating this test | Documented, intentionally left for separate follow-up work | [Sprint 7](07-semantic-retrieval.md), [Sprint 11](11-production-engineering-docker-ci.md) |
 | 20 | CI initially failed on `test_llm.py` | The test calls the real configured LLM provider (`ollama` by default) — GitHub's CI runner has no Ollama daemon, unlike the machine this was first validated on | Excluded with a documented reason | [Sprint 8](08-llm-integration.md), [Sprint 11](11-production-engineering-docker-ci.md) |
 
-## Found after initial deployment — a real performance bug and a missing feature
+## Found after initial deployment — real bugs, a missing feature, and a near-miss
 
-These two were found later, while using the deployed app for real (asking
-Sarah's exact question), not during the original build:
+Found later, while using the deployed app for real (asking Sarah's exact
+question), not during the original build:
 
 | # | Issue | Root cause | Fix | Detail |
 |---|---|---|---|---|
 | 21 | Every `/chat` response took several seconds longer than it needed to, even on a warm process — a question that should answer in ~3 seconds was taking ~14 | `Reranker()` (the cross-encoder used for reranking, Sprint 9) was constructed fresh inside `RAGChatService.__init__` on every single request, reloading its model from disk each time — unlike the embedding model, it never went through `AIServiceRegistry`'s singleton | Added `AIServiceRegistry.get_reranker()`, following the exact same pattern already used for the embedding model; `RAGChatService` now calls it instead of `Reranker()` directly. Measured directly: a warm request dropped from ~14s to ~2.9s | [Sprint 5](05-embeddings-and-ai-registry.md), [Sprint 9](09-rag-pipeline-and-hybrid-search.md) |
 | 22 | Sarah had no way to tell, from the chat UI, whether an answer came from a strong match in her document or a weak, borderline one | `SearchEvaluator` (Sprint 9) had computed an `Excellent`/`Good`/`Weak` quality label and returned it in every `/chat` response from the start — but no frontend component ever read `search_evaluation` | Added `AnswerQualityBadge`, wired to `response.search_evaluation.quality` and `.best_score`; verified live showing "Excellent match · 78%" on Sarah's sick-leave question | [Sprint 9](09-rag-pipeline-and-hybrid-search.md), [Sprint 13](13-frontend-nextjs.md) |
+| 23 | The very first real Gemini call after adding an API key failed: `google.api_core.exceptions.NotFound: 404 This model models/gemini-2.5-flash is no longer available to new users` | Google deprecated `gemini-2.5-flash` for this API key between when the project started and when Gemini was first actually exercised end-to-end — the config default had never been re-verified against a real call | Google's own error named the replacement directly; updated `GEMINI_MODEL` to `gemini-3.6-flash` in `.env`, `.env.example`, and `Settings.gemini_model`'s default. Re-verified live: same question, `HTTP 200`, correct answer | [Sprint 8](08-llm-integration.md) |
+| 24 | A real Gemini API key ended up typed into `.env.example` (git-tracked) instead of `.env` (git-ignored) while testing the provider toggle | `.env.example` and `.env` look nearly identical and sit next to each other; the key was added to the wrong one by hand | Caught by reviewing `git diff` before staging — moved the key to `.env`, reset `.env.example` back to blank, confirmed with a clean `git diff .env.example` before ever running `git add`. Never reached a commit, so no history rewrite was needed | (process lesson, not a code bug — the same category as bug #9) |
 
-Also worth noting directly: the actual generation is done by **Ollama**
-(`llama3.1`, running locally), not Gemini — set by `LLM_PROVIDER` in
-`.env`. Local CPU inference is inherently slower than a cloud API call,
-and the hallucination guard (Sprint 9) doubles that cost by making a
-second LLM call to validate every answer. The reranker fix above removes
-one real, avoidable delay; switching `LLM_PROVIDER=gemini` would remove
-the larger, structural one, at the cost of a per-call API fee instead of
-local compute time.
+Also worth updating: with the frontend's AI Model toggle in place (Sprint
+8/13), which provider answers a given question is no longer fixed for the
+whole server — it's chosen per request, defaulting to Ollama. Ollama still
+means local CPU inference, genuinely slower than a cloud call, and the
+hallucination guard (Sprint 9) still doubles that cost with a second LLM
+call to validate every answer — the reranker fix above removes one real,
+avoidable delay regardless of provider; switching to Gemini in Settings
+removes the larger, structural one, at the cost of a per-call API fee
+instead of local compute time.
 
 ## The single biggest lesson from this project
 

@@ -69,8 +69,9 @@ and **answering a question**. Detailed per-sprint reasoning lives in
                               │
                               ▼
                           6. Prompt Builder → LLM.generate()
-                             (Gemini gemini-2.5-flash, or Ollama llama3.1 —
-                              swappable via LLM_PROVIDER, same interface)
+                             (Gemini gemini-3.6-flash, or Ollama llama3.1 —
+                              chosen per-request by the frontend's Settings
+                              toggle, falls back to LLM_PROVIDER if unset)
                               │
                               ▼           ← answer #1 generated
                           7. Hallucination Guard
@@ -104,7 +105,7 @@ and **answering a question**. Detailed per-sprint reasoning lives in
 | 3 | Hybrid search | `HybridSearchService` (vector + `rank-bm25`) | Vector catches paraphrases, BM25 catches exact keywords; combined, weighted 0.6/0.4 |
 | 4 | Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Re-scores the shortlist by reading question+chunk together — more accurate than step 3 alone, too slow to run on everything |
 | 5 | Context management | `ContextWindowManager` | Dedupes overlapping chunks, stays under the LLM's token budget |
-| 6 | Generation | `GeminiService` / `OllamaService` (via `AIServiceRegistry.get_llm()`) | Writes the actual answer from the question + retrieved context |
+| 6 | Generation | `GeminiService` / `OllamaService` (via `AIServiceRegistry.get_llm(provider)`) | Writes the actual answer; which provider runs is chosen per-request (frontend Settings toggle), not fixed per server |
 | 7 | Hallucination guard | `HallucinationGuardService` | A second LLM call checks the answer is actually supported by the context; regenerates with a stricter prompt if not |
 | 8 | Search evaluation | `SearchEvaluator` | Grades the best match score into Excellent/Good/Weak, shown as a badge in the UI |
 | 9 | Source attribution | `SourceBuilder` | Attaches filename + chunk + score so the answer is traceable back to the real document |
@@ -130,7 +131,7 @@ information" instead of guessing.
 | Vectors (semantic search) | ChromaDB (its own server, HTTP) |
 | Keyword index | BM25, in-process |
 | Conversation history | In-memory only (not persisted) |
-| LLM provider | Gemini (cloud) or Ollama (local) — one config value |
+| LLM provider | Gemini (cloud) or Ollama (local) — chosen per-request; server default set by one config value, overridable per request from the frontend's Settings page |
 
 See `docs/sprints/` for the full reasoning, real bugs found, and the
 class-by-class "why" behind every piece above.
