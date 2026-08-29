@@ -7,8 +7,43 @@ on:
     branches: [master]
 
 jobs:
-  test:
+  # A `git push` with several commits is still just ONE GitHub push
+  # event - by default a single CI run only tests the final combined
+  # state, so a genuinely broken commit buried in the middle of a push
+  # could slip through untested (and later break `git bisect`, since
+  # bisect assumes every commit on the branch actually builds/passes).
+  # This job lists every commit included in the push so the `test` job
+  # below can run once per commit instead of once per push.
+  discover-commits:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      shas: ${{ steps.list.outputs.shas }}
+    steps:
+      - id: list
+        run: |
+          echo '${{ toJson(github.event.commits) }}' | jq -c '[.[].id]' > shas.json
+          echo "shas=$(cat shas.json)" >> "$GITHUB_OUTPUT"
+          echo "Commits in this push:"
+          cat shas.json
+
+  test:
+    needs: [discover-commits]
+    # discover-commits is skipped entirely on pull_request (its own `if`
+    # above) - `needs` would otherwise skip this job too when its
+    # dependency is skipped, so this explicitly allows that case through.
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # push: one matrix entry per commit in the push, from
+        # discover-commits above - each commit gets tested independently.
+        # pull_request: github.event.commits isn't populated the same
+        # way for PRs, so this just tests the PR's current head commit,
+        # same single-run behavior as before.
+        sha: ${{ github.event_name == 'push' && fromJson(needs.discover-commits.outputs.shas) || fromJson(format('["{0}"]', github.sha)) }}
 
     services:
       postgres:
@@ -25,14 +60,35 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # Sprint 12 moved ChromaDB off the embedded PersistentClient onto
+      # its own server (app/services/chroma_client.py's HttpClient) so
+      # the web app and worker can share it safely. This CI job never
+      # got the matching service added, so every test that uploads or
+      # processes a document (VectorStoreService reaching for Chroma)
+      # failed with "Could not connect to a Chroma server" - it was
+      # simply never running here. Version-pinned to match requirements.txt.
+      chroma:
+        image: chromadb/chroma:1.5.9
+        ports:
+          - 8001:8000
+        options: >-
+          --health-cmd "bash -c 'echo > /dev/tcp/localhost/8000'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       DATABASE_URL: postgresql+asyncpg://rag_user:rag_password@localhost:5432/rag_chatbot
       DATABASE_URL_SYNC: postgresql+psycopg2://rag_user:rag_password@localhost:5432/rag_chatbot
       JWT_SECRET_KEY: ci-test-secret-key
       LLM_PROVIDER: ollama
+      CHROMA_HOST: localhost
+      CHROMA_PORT: 8001
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
 
       - uses: actions/setup-python@v5
         with:
