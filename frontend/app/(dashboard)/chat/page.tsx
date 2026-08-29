@@ -43,15 +43,6 @@ export default function ChatPage() {
             messages.map((message) => <ChatMessage key={message.id} message={message} />)
           )}
 
-          {isPending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="flex size-7 items-center justify-center rounded-full bg-secondary">
-                <Sparkles className="size-3.5 animate-pulse" />
-              </span>
-              Thinking...
-            </div>
-          )}
-
           <div ref={bottomRef} />
         </div>
       </div>
