@@ -104,6 +104,7 @@ Full detail, with real code references at every step, in
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Why each major technology was chosen |
 | [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md) | Interview-style Q&A about this specific system |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | RAG terminology in plain language |
+| [`docs/VIDEO_DEMO_SCRIPT.md`](docs/VIDEO_DEMO_SCRIPT.md) | Narration-ready walkthrough for demoing the app to students |
 | [`docs/sprints/`](docs/sprints/) | Sprint-by-sprint build history and every real bug found along the way |
 
 ## Project Structure
