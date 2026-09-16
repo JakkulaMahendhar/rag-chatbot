@@ -1,0 +1,25 @@
+flowchart TD
+    Q[Query text] --> QEmb[EmbeddingService.generate_query_embedding<br/>all-MiniLM-L6-v2]
+    QEmb --> VS[VectorStoreService.search<br/>ChromaDB, top_k_vector=10]
+    Q --> BM[BM25SearchService.search<br/>rank_bm25, top_k_bm25=10]
+
+    VS --> VN["Normalize: 1 / (1 + L2 distance)"]
+    BM --> BN["Normalize: score / max(score)"]
+
+    VN --> Merge[Merge by chunk_id]
+    BN --> Merge
+
+    Merge --> Hybrid["hybrid_score =<br/>vector_weight(0.6) * vector_score +<br/>bm25_weight(0.4) * bm25_score"]
+    Hybrid --> Filter1{"hybrid_score >=<br/>hybrid_score_threshold (0.30)?"}
+    Filter1 -->|no| Drop1[Dropped]
+    Filter1 -->|yes| Ranked[Sorted candidates]
+
+    Ranked --> CE[Reranker: CrossEncoder<br/>ms-marco-MiniLM-L-6-v2<br/>scores (query, chunk) jointly]
+    CE --> Filter2{"rerank_score >=<br/>reranker_score_threshold (0.20)?"}
+    Filter2 -->|no| Drop2[Dropped]
+    Filter2 -->|yes| Top3[Top 3 by rerank_score]
+
+    Top3 --> Dedup[ContextDeduplicator<br/>exact content match]
+    Dedup --> Compress[ContextCompressor<br/>keep sentences matching question keywords]
+    Compress --> Window[ContextWindowManager<br/>word-count budget, 3000 tokens]
+    Window --> Context[Final context sent to LLM]

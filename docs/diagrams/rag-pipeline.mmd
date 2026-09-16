@@ -1,0 +1,30 @@
+flowchart TD
+    subgraph Ingestion["Document Ingestion (async, via worker)"]
+        U[Upload file] --> St[StorageService<br/>save with UUID filename]
+        St --> Pending[(Postgres:<br/>status=pending)]
+        Pending -.worker polls every 5s.-> Par[ParserService<br/>PyMuPDF / python-docx / open]
+        Par --> Chu[ChunkingService<br/>RecursiveCharacterTextSplitter<br/>size=1000 overlap=200]
+        Chu --> Emb[EmbeddingService<br/>all-MiniLM-L6-v2]
+        Emb --> VDB[(ChromaDB<br/>vectors + text + metadata)]
+        Emb --> BM25I[(BM25 index<br/>rank_bm25, pickled)]
+        VDB --> Done[(Postgres:<br/>status=completed)]
+        BM25I --> Done
+    end
+
+    subgraph Query["Chat Query (POST /chat or /chat/stream)"]
+        Question[User question] --> Access[QueryAccessService<br/>cross-user check]
+        Access --> Enh[QueryEnhancer<br/>LLM: standalone query]
+        Enh --> Exp[QueryExpander<br/>LLM: 3 query variants]
+        Exp --> Hybrid[HybridSearchService<br/>vector + BM25, weighted fusion]
+        VDB -.-> Hybrid
+        BM25I -.-> Hybrid
+        Hybrid --> Rerank[Reranker<br/>CrossEncoder, top 3]
+        Rerank --> Format[ContextFormatter<br/>labeled context text]
+        Format --> Prompt[PromptBuilder<br/>rules + history + context + question]
+        Prompt --> Gen[LLM.generate<br/>Gemini or Ollama]
+        Gen --> Guard[HallucinationGuardService<br/>LLM: grounded check]
+        Guard -->|not grounded| Regen[LLM.generate<br/>stricter prompt]
+        Guard -->|grounded| Answer[Final answer]
+        Regen --> Answer
+        Answer --> Client[Returned to client<br/>+ sources + quality label]
+    end

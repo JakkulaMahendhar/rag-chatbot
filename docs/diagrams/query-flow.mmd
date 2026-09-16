@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant C as Client
+    participant API as FastAPI (/chat)
+    participant Chat as RAGChatService
+    participant QA as QueryAccessService
+    participant QE as QueryEnhancer (LLM call 1)
+    participant QX as QueryExpander (LLM call 2)
+    participant Ret as RetrievalService
+    participant Hy as HybridSearchService
+    participant Rr as Reranker (CrossEncoder)
+    participant Ctx as ContextFormatter
+    participant LLM as LLMService (LLM call 3)
+    participant HG as HallucinationGuardService (LLM call 4)
+
+    C->>API: POST /chat {question, conversation_id}
+    API->>Chat: chat(question, conversation_id, user_id)
+    Chat->>QA: is_cross_user_request(question, user_id)
+    QA-->>Chat: false (allowed)
+    Chat->>QE: enhance(question, history)
+    QE-->>Chat: standalone query
+    Chat->>QX: expand(enhanced_query)
+    QX-->>Chat: 3 query variations (JSON)
+    loop for each of 3 queries
+        Chat->>Ret: multi_retrieve(...)
+        Ret->>Hy: search(query_embedding, query, document_ids)
+        Hy-->>Ret: hybrid-ranked chunks
+    end
+    Ret-->>Chat: merged + deduplicated chunks
+    Chat->>Rr: rerank(query, sources)
+    Rr-->>Chat: top 3 above reranker_score_threshold
+    Chat->>Ctx: format(sources)
+    Ctx-->>Chat: labeled context text
+    Chat->>LLM: generate(prompt)
+    LLM-->>Chat: answer #1
+    Chat->>HG: validate(question, context, answer)
+    HG-->>Chat: {grounded, confidence, unsupported_claims}
+    alt not grounded
+        Chat->>LLM: generate(strict_prompt)
+        LLM-->>Chat: answer #2 (regenerated)
+    end
+    Chat-->>API: {answer, sources, search_evaluation}
+    API-->>C: 200 OK (or SSE stream via /chat/stream)

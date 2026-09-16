@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant C as Client
+    participant API as FastAPI (/upload)
+    participant Reg as DocumentRegistrationService
+    participant Store as StorageService
+    participant DB as PostgreSQL
+    participant W as Worker (app/worker.py)
+    participant Proc as DocumentProcessingService
+    participant P as ParserService
+    participant Ch as ChunkingService
+    participant E as EmbeddingService
+    participant V as ChromaDB
+    participant B as BM25SearchService
+
+    C->>API: POST /upload (file)
+    API->>Reg: register(file, user_id)
+    Reg->>Store: save_file(file)
+    Store-->>Reg: uploads/<uuid>.pdf
+    Reg->>DB: INSERT documents (status=pending)
+    API-->>C: 202 Accepted {document_id, status: pending}
+
+    loop every 5s
+        W->>DB: SELECT documents WHERE status=pending LIMIT 5
+    end
+    W->>Proc: process_document(document)
+    Proc->>DB: status = processing
+    Proc->>P: parse(file_path)
+    P-->>Proc: raw text
+    Proc->>Ch: split(text, document_id, metadata)
+    Ch-->>Proc: DocumentChunk[] (chunk_size=1000, overlap=200)
+    Proc->>E: generate(chunks)
+    E-->>Proc: DocumentEmbedding[] (384-dim vectors)
+    Proc->>V: add_chunks(chunks, embeddings) [upsert]
+    Proc->>B: add_documents(bm25_documents) [rebuild index]
+    Proc->>DB: status = completed
