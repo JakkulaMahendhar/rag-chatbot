@@ -32,3 +32,22 @@ class ConversationStore(ABC):
         conversation_id: str
     ) -> list[ConversationMessage]:
         pass
+
+
+
+    @abstractmethod
+    def set_owner(
+        self,
+        conversation_id: str,
+        user_id: int
+    ):
+        pass
+
+
+
+    @abstractmethod
+    def get_owner(
+        self,
+        conversation_id: str
+    ) -> int | None:
+        pass

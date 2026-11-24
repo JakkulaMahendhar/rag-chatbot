@@ -144,6 +144,14 @@ class Settings(BaseSettings):
 
     auth_rate_limit_window_seconds: int = 60
 
+    # =====================================================
+    # Chat Rate Limiting (per user, POST /chat and /chat/stream)
+    # =====================================================
+
+    chat_rate_limit_requests: int = 20
+
+    chat_rate_limit_window_seconds: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

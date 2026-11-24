@@ -8,6 +8,9 @@ from google.api_core.exceptions import GoogleAPIError
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.exceptions import ConversationAccessDenied
+from app.core.rate_limiter import InMemoryRateLimiter
 from app.database.session import get_session
 from app.database.models.user import User
 from app.services.rag_chat import RAGChatService
@@ -17,6 +20,22 @@ router = APIRouter(
     prefix="/chat",
     tags=["Chat"],
 )
+
+
+# Every chat runs 2-3 LLM calls (answer, hallucination guard, maybe a
+# strict regeneration), so without a limit one user - or one buggy script
+# - can burn through a shared quota (e.g. Gemini's free tier) for
+# everyone. Keyed by user id, not IP: it follows the account, and
+# coworkers behind one office IP don't share a budget. Shared by /chat
+# and /chat/stream so switching endpoints doesn't double the allowance.
+_chat_rate_limiter = InMemoryRateLimiter(
+    max_attempts=settings.chat_rate_limit_requests,
+    window_seconds=settings.chat_rate_limit_window_seconds,
+)
+
+
+def _limit_chat_per_user(current_user: User = Depends(get_current_user)):
+    _chat_rate_limiter.check(f"user:{current_user.id}")
 
 
 class ChatRequest(BaseModel):
@@ -73,6 +92,11 @@ async def _run_chat(
             user_id=current_user.id,
         )
 
+    except ConversationAccessDenied:
+
+        # 404, not 403: don't confirm that the conversation exists.
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
     except GoogleAPIError as error:
 
         # Covers quota/rate-limit errors (e.g. the free tier's 20
@@ -87,7 +111,7 @@ async def _run_chat(
         )
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(_limit_chat_per_user)])
 async def chat(
     request: ChatRequest,
     session: AsyncSession = Depends(get_session),
@@ -104,7 +128,7 @@ async def chat(
     return await _run_chat(request, session, current_user)
 
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(_limit_chat_per_user)])
 async def chat_stream(
     request: ChatRequest,
     session: AsyncSession = Depends(get_session),
