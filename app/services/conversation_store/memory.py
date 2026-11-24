@@ -13,6 +13,9 @@ class InMemoryConversationStore(
 
         self.store = {}
 
+        # conversation_id -> user_id of whoever started it
+        self.owners = {}
+
 
 
     def create(
@@ -53,4 +56,25 @@ class InMemoryConversationStore(
         return self.store.get(
             conversation_id,
             []
+        )
+
+
+
+    def set_owner(
+        self,
+        conversation_id: str,
+        user_id: int
+    ):
+
+        self.owners[conversation_id] = user_id
+
+
+
+    def get_owner(
+        self,
+        conversation_id: str
+    ):
+
+        return self.owners.get(
+            conversation_id
         )

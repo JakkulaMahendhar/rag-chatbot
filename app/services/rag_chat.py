@@ -103,9 +103,12 @@ class RAGChatService:
         # Conversation
         # -----------------------------------
 
-        if not conversation_id or conversation_id == "string":
-
-            conversation_id = self.conversation_service.create_conversation()
+        # Raises ConversationAccessDenied for another user's conversation,
+        # before the question is added to (or history read from) it.
+        conversation_id = self.conversation_service.resolve_conversation(
+            conversation_id,
+            user_id,
+        )
 
         self.conversation_service.add_user_message(
             conversation_id,
